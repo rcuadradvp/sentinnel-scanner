@@ -1,27 +1,10 @@
-import { Stack, Link } from 'expo-router';
+/**
+ * Index Route
+ * Redirige a login por defecto. AuthGate maneja el resto.
+ */
 
-import { View } from 'react-native';
+import { Redirect } from 'expo-router';
 
-import { Container } from '@/components/Container';
-import { ScreenContent } from '@/components/ScreenContent';
-import { Button, ButtonText } from '@/components/ui/button';
-
-export default function Home() {
-  return (
-    <View className={styles.container}>
-      <Stack.Screen options={{ title: 'Home' }} />
-      <Container>
-        <ScreenContent path="app/index.tsx" title="Home"></ScreenContent>
-        <Link href={{ pathname: '/details', params: { name: 'Dan' } }} asChild>
-          <Button variant="solid" size="md" action="primary">
-            <ButtonText>Detalles</ButtonText>
-          </Button>
-        </Link>
-      </Container>
-    </View>
-  );
+export default function Index() {
+  return <Redirect href="/(auth)/login" />;
 }
-
-const styles = {
-  container: 'flex flex-1 bg-white',
-};

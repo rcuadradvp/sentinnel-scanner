@@ -1,13 +1,55 @@
-import '../global.css';
-import { Stack } from 'expo-router';
+/**
+ * Root Layout
+ */
+
+import { useEffect } from 'react';
+import { Slot, useRouter, useSegments, useRootNavigationState } from 'expo-router';
+import { View, ActivityIndicator } from 'react-native';
 import { GluestackUIProvider } from '@/components/ui/gluestack-ui-provider';
+import { AuthProvider, useAuth } from '@/context';
 
 import '@/global.css';
 
-export default function Layout() {
+function AuthGate({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading } = useAuth();
+  const segments = useSegments();
+  const router = useRouter();
+  const navigationState = useRootNavigationState();
+
+  useEffect(() => {
+    if (!navigationState?.key) return;
+    if (isLoading) return;
+
+    const inAuthGroup = segments[0] === '(auth)';
+
+    if (isAuthenticated && inAuthGroup) {
+      // Autenticado en rutas públicas → ir a home
+      router.replace('/(app)/(tabs)/home');
+    } else if (!isAuthenticated && !inAuthGroup) {
+      // No autenticado en rutas privadas → ir a login
+      router.replace('/(auth)/login');
+    }
+  }, [isAuthenticated, isLoading, segments, navigationState?.key]);
+
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+        <ActivityIndicator size="large" color="#333" />
+      </View>
+    );
+  }
+
+  return <>{children}</>;
+}
+
+export default function RootLayout() {
   return (
-    <GluestackUIProvider>
-      <Stack />
+    <GluestackUIProvider mode="light">
+      <AuthProvider>
+        <AuthGate>
+          <Slot />
+        </AuthGate>
+      </AuthProvider>
     </GluestackUIProvider>
   );
 }
