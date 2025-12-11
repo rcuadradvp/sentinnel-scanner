@@ -1,8 +1,8 @@
 /**
- * BLE Scanner Screen - Solo Minew
+ * BLE Scanner Screen - Minew SDK
  */
 
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,23 +12,18 @@ import {
   RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useBleScanner } from '@/hooks';
-import { getFrameTypeName } from '@/services/minew-parser';
-import type { MinewBeacon } from '@/types';
-import { BleScannerState } from '@/constants/ble';
+import { useMinewScanner } from '@/hooks/useMinewScanner';
+import type { MinewBeacon } from '@/services/minew-scanner';
 
 export default function ScannerScreen() {
   const {
-    status,
+    isScanning,
     beacons,
-    permissions,
+    error,
     startScan,
     stopScan,
-    requestPermissions,
     clearDevices,
-  } = useBleScanner();
-
-  const isScanning = status.state === BleScannerState.SCANNING;
+  } = useMinewScanner();
 
   /**
    * Toggle escaneo
@@ -37,30 +32,46 @@ export default function ScannerScreen() {
     if (isScanning) {
       stopScan();
     } else {
-      if (!permissions?.allGranted) {
-        const granted = await requestPermissions();
-        if (!granted) return;
-      }
-      await startScan(true); // Solo Minew
+      await startScan();
     }
   };
 
   /**
-   * Lista ordenada por RSSI (más cercano primero)
+   * Lista ordenada por RSSI
    */
   const sortedBeacons = useMemo(() => {
     return [...beacons].sort((a, b) => b.rssi - a.rssi);
   }, [beacons]);
 
   /**
-   * Renderiza un beacon Minew
+   * Obtiene el nombre del tipo de frame
+   */
+  const getFrameTypeName = (frames: MinewBeacon['frames']): string => {
+    if (!frames || frames.length === 0) return 'Unknown';
+    
+    const frameTypes = frames.map(f => f.frameType);
+    if (frameTypes.includes('FrameHTSensor')) return 'Temp/Humidity';
+    if (frameTypes.includes('FrameiBeacon')) return 'iBeacon';
+    if (frameTypes.includes('FrameUID')) return 'Eddystone UID';
+    if (frameTypes.includes('FrameURL')) return 'Eddystone URL';
+    if (frameTypes.includes('FrameAccSensor')) return 'Accelerometer';
+    if (frameTypes.includes('FrameTLM')) return 'Telemetry';
+    
+    return frames[0]?.frameType || 'Unknown';
+  };
+
+  /**
+   * Renderiza un beacon
    */
   const renderBeacon = ({ item }: { item: MinewBeacon }) => (
     <View className="bg-white rounded-xl p-4 mb-3 shadow-sm border border-gray-100">
       <View className="flex-row justify-between items-start mb-2">
-        <Text className="font-semibold text-gray-800 flex-1 mr-2" numberOfLines={1}>
-          {item.mac}
-        </Text>
+        <View className="flex-1 mr-2">
+          <Text className="font-semibold text-gray-800" numberOfLines={1}>
+            {item.name || 'Sin nombre'}
+          </Text>
+          <Text className="text-gray-500 text-xs">{item.mac}</Text>
+        </View>
         <View className="bg-primary-100 px-2 py-1 rounded">
           <Text className="text-primary-700 text-xs font-medium">
             {item.rssi} dBm
@@ -69,15 +80,13 @@ export default function ScannerScreen() {
       </View>
 
       <View className="flex-row flex-wrap gap-2">
-        {/* Frame Type */}
         <View className="bg-gray-100 px-2 py-1 rounded">
           <Text className="text-gray-600 text-xs">
-            {getFrameTypeName(item.frameType)}
+            {getFrameTypeName(item.frames)}
           </Text>
         </View>
 
-        {/* Temperatura */}
-        {item.temperature !== null && (
+        {item.temperature !== undefined && (
           <View className="bg-blue-100 px-2 py-1 rounded">
             <Text className="text-blue-700 text-xs">
               🌡️ {item.temperature.toFixed(1)}°C
@@ -85,8 +94,7 @@ export default function ScannerScreen() {
           </View>
         )}
 
-        {/* Humedad */}
-        {item.humidity !== null && (
+        {item.humidity !== undefined && (
           <View className="bg-cyan-100 px-2 py-1 rounded">
             <Text className="text-cyan-700 text-xs">
               💧 {item.humidity.toFixed(1)}%
@@ -94,24 +102,14 @@ export default function ScannerScreen() {
           </View>
         )}
 
-        {/* Batería */}
-        {item.batteryLevel !== null && (
-          <View
-            className={`px-2 py-1 rounded ${
-              item.batteryLevel > 20 ? 'bg-green-100' : 'bg-red-100'
-            }`}
-          >
-            <Text
-              className={`text-xs ${
-                item.batteryLevel > 20 ? 'text-green-700' : 'text-red-700'
-              }`}
-            >
-              🔋 {item.batteryLevel}%
+        {item.battery > 0 && (
+          <View className={`px-2 py-1 rounded ${item.battery > 20 ? 'bg-green-100' : 'bg-red-100'}`}>
+            <Text className={`text-xs ${item.battery > 20 ? 'text-green-700' : 'text-red-700'}`}>
+              🔋 {item.battery}%
             </Text>
           </View>
         )}
 
-        {/* iBeacon */}
         {item.uuid && (
           <View className="bg-purple-100 px-2 py-1 rounded">
             <Text className="text-purple-700 text-xs">
@@ -121,7 +119,6 @@ export default function ScannerScreen() {
         )}
       </View>
 
-      {/* UUID completo para iBeacon */}
       {item.uuid && (
         <Text className="text-gray-400 text-xs mt-2" numberOfLines={1}>
           {item.uuid}
@@ -141,10 +138,8 @@ export default function ScannerScreen() {
             )}
             <Text className="text-gray-600 text-sm">
               {isScanning
-                ? `Escaneando... (${beacons.length} encontrados)`
-                : status.error
-                  ? status.error
-                  : `${beacons.length} beacons Minew`}
+                ? `Escaneando... (${beacons.length})`
+                : `${beacons.length} beacons`}
             </Text>
           </View>
 
@@ -159,24 +154,12 @@ export default function ScannerScreen() {
             </Text>
           </Pressable>
         </View>
-      </View>
 
-      {/* Error de permisos */}
-      {permissions && !permissions.allGranted && (
-        <View className="bg-yellow-50 px-4 py-3 border-b border-yellow-100">
-          <Text className="text-yellow-800 text-sm">
-            ⚠️ Faltan permisos para escanear Bluetooth.
-          </Text>
-          <Pressable
-            className="mt-2 bg-yellow-500 active:bg-yellow-600 py-2 px-3 rounded self-start"
-            onPress={requestPermissions}
-          >
-            <Text className="text-white text-sm font-medium">
-              Conceder permisos
-            </Text>
-          </Pressable>
-        </View>
-      )}
+        {/* Error message */}
+        {error && !isScanning && (
+          <Text className="text-red-500 text-xs mt-2">{error}</Text>
+        )}
+      </View>
 
       {/* Lista de beacons */}
       <FlatList
@@ -189,21 +172,19 @@ export default function ScannerScreen() {
             refreshing={false}
             onRefresh={() => {
               clearDevices();
-              if (!isScanning) {
-                startScan(true);
-              }
+              if (!isScanning) startScan();
             }}
           />
         }
         ListEmptyComponent={
           <View className="flex-1 items-center justify-center py-20">
             <Text className="text-gray-400 text-lg mb-2">
-              {isScanning ? '🔍 Buscando beacons...' : '📡 Sin beacons'}
+              {isScanning ? '🔍 Buscando...' : '📡 Sin beacons'}
             </Text>
             <Text className="text-gray-400 text-sm text-center px-8">
               {isScanning
-                ? 'Acerca un beacon Minew para detectarlo'
-                : 'Presiona "Escanear" para buscar beacons Minew'}
+                ? 'Acerca un beacon Minew'
+                : 'Presiona "Escanear" para buscar'}
             </Text>
           </View>
         }
