@@ -1,11 +1,3 @@
-/**
- * Storage Keys
- * 
- * Centraliza todas las claves de almacenamiento.
- * - SecureStore: datos sensibles (tokens) - encriptado
- * - AsyncStorage: datos no sensibles (preferencias) - no encriptado
- */
-
 export const SecureStorageKeys = {
   ACCESS_TOKEN: 'secure_access_token',
   REFRESH_TOKEN: 'secure_refresh_token',
@@ -20,10 +12,9 @@ export const AsyncStorageKeys = {
   THEME_MODE: 'theme_mode',
   ONBOARDING_COMPLETED: 'onboarding_completed',
   BIOMETRIC_ENABLED: 'biometric_enabled',
+  AUTHORIZED_DEVICES_MAP: 'authorized_devices_map',
+  LAST_DEVICE_SYNC: 'last_device_sync',
 } as const;
 
-/**
- * Tipos derivados para type-safety
- */
 export type SecureStorageKey = typeof SecureStorageKeys[keyof typeof SecureStorageKeys];
 export type AsyncStorageKey = typeof AsyncStorageKeys[keyof typeof AsyncStorageKeys];

@@ -1,25 +1,8 @@
-/**
- * Storage Service
- *
- * Abstrae el acceso a SecureStore y AsyncStorage.
- * - SecureStore: datos sensibles (tokens) - encriptado
- * - AsyncStorage: datos no sensibles (preferencias, user data)
- *
- * ¿Por qué este servicio?
- * 1. Centraliza la lógica de storage
- * 2. Maneja errores de forma consistente
- * 3. Facilita testing (se puede mockear)
- * 4. Si cambiamos de librería, solo modificamos aquí
- */
-
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SecureStorageKeys, AsyncStorageKeys } from '@/constants/storage';
 import type { SecureStorageKey, AsyncStorageKey } from '@/constants/storage';
 
-/**
- * Servicio para datos SENSIBLES (tokens)
- */
 export const SecureStorage = {
   async set(key: SecureStorageKey, value: string): Promise<boolean> {
     try {
@@ -50,10 +33,6 @@ export const SecureStorage = {
     }
   },
 
-  /**
-   * Elimina solo tokens (para logout)
-   * NO elimina credenciales biométricas
-   */
   async clearTokens(): Promise<boolean> {
     try {
       await Promise.all([
@@ -68,10 +47,6 @@ export const SecureStorage = {
     }
   },
 
-  /**
-   * Elimina TODO (incluyendo credenciales biométricas)
-   * Usar solo cuando el usuario deshabilita biometría o desinstala
-   */
   async clearAll(): Promise<boolean> {
     try {
       const keys = Object.values(SecureStorageKeys);
@@ -84,14 +59,7 @@ export const SecureStorage = {
   },
 };
 
-/**
- * Servicio para datos NO sensibles (preferencias, datos de usuario)
- * No usa encriptación, pero permite guardar objetos JSON
- */
 export const AppStorage = {
-  /**
-   * Guarda un valor (acepta objetos, los serializa automáticamente)
-   */
   async set<T>(key: AsyncStorageKey, value: T): Promise<boolean> {
     try {
       const serialized = typeof value === 'string' ? value : JSON.stringify(value);
@@ -103,9 +71,6 @@ export const AppStorage = {
     }
   },
 
-  /**
-   * Obtiene un valor como string
-   */
   async get(key: AsyncStorageKey): Promise<string | null> {
     try {
       return await AsyncStorage.getItem(key);
@@ -115,9 +80,6 @@ export const AppStorage = {
     }
   },
 
-  /**
-   * Obtiene un valor parseado (para objetos JSON)
-   */
   async getJSON<T>(key: AsyncStorageKey): Promise<T | null> {
     try {
       const value = await AsyncStorage.getItem(key);
@@ -128,9 +90,6 @@ export const AppStorage = {
     }
   },
 
-  /**
-   * Elimina un valor
-   */
   async remove(key: AsyncStorageKey): Promise<boolean> {
     try {
       await AsyncStorage.removeItem(key);
@@ -141,9 +100,6 @@ export const AppStorage = {
     }
   },
 
-  /**
-   * Elimina todos los datos de la app (logout completo)
-   */
   async clearAll(): Promise<boolean> {
     try {
       const keys = Object.values(AsyncStorageKeys);
@@ -156,10 +112,6 @@ export const AppStorage = {
   },
 };
 
-/**
- * Limpia TODO el storage (SecureStore + AsyncStorage)
- * Usar en logout
- */
 export const clearAllStorage = async (): Promise<boolean> => {
   const [secureResult, appResult] = await Promise.all([
     SecureStorage.clearAll(),

@@ -1,13 +1,8 @@
-/**
- * BLE Scanner Service
- * 
- * Servicio para escanear dispositivos BLE y detectar beacons Minew.
- */
-
-import { BleManager, Device, ScanMode, ScanCallbackType, State } from 'react-native-ble-plx';
+import { BleManager, Device, State, BleError } from 'react-native-ble-plx';
 import { BlePermissionsService } from './ble-permissions';
-import { b64ToHex, parseMinewBeacon, isMinewBeacon } from './minew-parser';
-import { BleScannerState, BLE_SCAN_CONFIG } from '@/constants/ble';
+import { isMinewBeacon, parseMinewBeacon, b64ToHex } from './minew-parser';
+import { DeviceService } from './device';
+import { BleScannerState } from '@/constants/ble';
 import type {
   BleDevice,
   MinewBeacon,
@@ -15,44 +10,70 @@ import type {
   OnDeviceFoundCallback,
   OnBeaconFoundCallback,
   OnErrorCallback,
+  AuthorizedDevicesMap,
 } from '@/types';
 
-class BleScanner {
+export class BleScanner {
+  private static instance: BleScanner | null = null;
   private manager: BleManager | null = null;
-  private isScanning: boolean = false;
   private state: BleScannerStatus['state'] = BleScannerState.IDLE;
+  private isScanning = false;
   private error: string | null = null;
+  private lastUpdate: number | null = null;
   private devices: Map<string, BleDevice> = new Map();
   private beacons: Map<string, MinewBeacon> = new Map();
-  private lastUpdate: number | null = null;
-
-  // Callbacks
+  private authorizedDevicesMap: AuthorizedDevicesMap = {};
   private onDeviceFound: OnDeviceFoundCallback | null = null;
   private onBeaconFound: OnBeaconFoundCallback | null = null;
   private onError: OnErrorCallback | null = null;
   private onStateChange: ((status: BleScannerStatus) => void) | null = null;
-
-  // Throttling
   private lastReportTime: Map<string, number> = new Map();
-
-  /**
-   * Obtiene o crea el BleManager (lazy initialization)
-   */
-  private getManager(): BleManager {
-    if (!this.manager) {
-      this.manager = new BleManager();
-      this.setupStateListener();
-    }
-    return this.manager;
+  private readonly REPORT_INTERVAL = 5000;
+  private constructor() {
+    this.initializeManager();
+    this.loadAuthorizedDevices();
   }
 
-  /**
-   * Configura listener para cambios de estado del Bluetooth
-   */
-  private setupStateListener(): void {
-    if (!this.manager) return;
+  static getInstance(): BleScanner {
+    if (!BleScanner.instance) {
+      BleScanner.instance = new BleScanner();
+    }
+    return BleScanner.instance;
+  }
 
-    this.manager.onStateChange((state) => {
+  private async loadAuthorizedDevices(): Promise<void> {
+    try {
+      const devicesMap = await DeviceService.getAuthorizedDevicesMap();
+      this.authorizedDevicesMap = devicesMap || {};
+      const deviceCount = Object.keys(this.authorizedDevicesMap).length;
+      console.log('[BleScanner] Loaded authorized devices:', deviceCount);
+    } catch (error) {
+      console.error('[BleScanner] Error loading authorized devices:', error);
+      this.authorizedDevicesMap = {};
+    }
+  }
+
+  async reloadAuthorizedDevices(): Promise<void> {
+    console.log('[BleScanner] Reloading authorized devices...');
+    await this.loadAuthorizedDevices();
+  }
+
+  private initializeManager(): void {
+    this.manager = new BleManager();
+    this.setupStateListener();
+  }
+
+  private getManager(): BleManager {
+    if (!this.manager) {
+      this.initializeManager();
+    }
+    return this.manager!;
+  }
+
+  private setupStateListener(): void {
+    const manager = this.getManager();
+
+    manager.onStateChange((state) => {
       console.log('[BleScanner] Bluetooth state:', state);
 
       if (state === State.PoweredOff) {
@@ -67,27 +88,18 @@ class BleScanner {
     }, true);
   }
 
-  /**
-   * Actualiza el estado y notifica
-   */
   private updateState(newState: BleScannerStatus['state']): void {
     this.state = newState;
     this.lastUpdate = Date.now();
     this.notifyStateChange();
   }
 
-  /**
-   * Notifica cambio de estado
-   */
   private notifyStateChange(): void {
     if (this.onStateChange) {
       this.onStateChange(this.getStatus());
     }
   }
 
-  /**
-   * Maneja errores
-   */
   private handleError(message: string): void {
     console.error('[BleScanner] Error:', message);
     this.error = message;
@@ -98,9 +110,63 @@ class BleScanner {
     }
   }
 
-  /**
-   * Obtiene el estado actual
-   */
+  private handleDevice = (error: BleError | null, device: Device | null): void => {
+    if (error) {
+      console.warn('[BleScanner] Scan error:', error);
+      return;
+    }
+
+    if (!device) return;
+
+    const manufacturerDataB64 = device.manufacturerData;
+    const manufacturerDataHex = b64ToHex(manufacturerDataB64);
+
+    if (isMinewBeacon(manufacturerDataHex)) {
+      const beacon = parseMinewBeacon(device.id, device.rssi ?? 0, manufacturerDataHex);
+
+      if (beacon) {
+        const authorizedName = this.authorizedDevicesMap[beacon.mac];
+
+        if (!authorizedName) {
+          return;
+        }
+
+        beacon.authorizedName = authorizedName;
+        beacon.isAuthorized = true;
+
+        const lastReport = this.lastReportTime.get(beacon.mac) || 0;
+        const now = Date.now();
+
+        if (now - lastReport >= this.REPORT_INTERVAL) {
+          this.beacons.set(beacon.mac, beacon);
+          this.lastReportTime.set(beacon.mac, now);
+
+          if (this.onBeaconFound) {
+            this.onBeaconFound(beacon);
+          }
+        } else {
+          this.beacons.set(beacon.mac, beacon);
+        }
+      }
+    }
+
+    const bleDevice: BleDevice = {
+      id: device.id,
+      name: device.name,
+      rssi: device.rssi ?? 0,
+      manufacturerData: manufacturerDataHex,
+      txPowerLevel: device.txPowerLevel,
+      isConnectable: device.isConnectable,
+      lastSeen: Date.now(),
+    };
+
+    this.devices.set(device.id, bleDevice);
+
+    if (this.onDeviceFound) {
+      this.onDeviceFound(bleDevice);
+    }
+  };
+
   getStatus(): BleScannerStatus {
     return {
       state: this.state,
@@ -111,23 +177,18 @@ class BleScanner {
     };
   }
 
-  /**
-   * Obtiene todos los dispositivos detectados
-   */
   getDevices(): BleDevice[] {
     return Array.from(this.devices.values());
   }
 
-  /**
-   * Obtiene todos los beacons Minew detectados
-   */
   getBeacons(): MinewBeacon[] {
     return Array.from(this.beacons.values());
   }
 
-  /**
-   * Configura callbacks
-   */
+  getAuthorizedDevicesCount(): number {
+    return Object.keys(this.authorizedDevicesMap).length;
+  }
+
   setCallbacks(callbacks: {
     onDeviceFound?: OnDeviceFoundCallback;
     onBeaconFound?: OnBeaconFoundCallback;
@@ -140,9 +201,6 @@ class BleScanner {
     this.onStateChange = callbacks.onStateChange || null;
   }
 
-  /**
-   * Inicia el escaneo BLE
-   */
   async startScan(options?: { minewOnly?: boolean }): Promise<boolean> {
     if (this.isScanning) {
       console.log('[BleScanner] Already scanning');
@@ -151,167 +209,86 @@ class BleScanner {
 
     const manager = this.getManager();
 
-    // Verificar permisos
     const permissions = await BlePermissionsService.request();
     if (!permissions.allGranted) {
       this.handleError('Permisos no concedidos');
       return false;
     }
 
-    // Verificar estado del Bluetooth
     const btState = await manager.state();
     if (btState !== State.PoweredOn) {
       this.handleError('Bluetooth no está disponible');
       return false;
     }
 
-    // Limpiar datos anteriores
+    await this.loadAuthorizedDevices();
+
+    const deviceCount = this.getAuthorizedDevicesCount();
     this.devices.clear();
     this.beacons.clear();
     this.lastReportTime.clear();
     this.error = null;
 
-    const minewOnly = options?.minewOnly ?? false;
+    const minewOnly = options?.minewOnly ?? true;
 
     try {
       this.isScanning = true;
       this.updateState(BleScannerState.SCANNING);
 
-      console.log('[BleScanner] Starting scan...');
-
       manager.startDeviceScan(
         null,
         {
-          allowDuplicates: BLE_SCAN_CONFIG.ALLOW_DUPLICATES,
-          scanMode: ScanMode.LowLatency,
-          callbackType: ScanCallbackType.AllMatches,
+          allowDuplicates: true,
         },
-        (error, device) => {
-          if (error) {
-            console.error('[BleScanner] Scan error:', error.message);
-            this.handleError(`Error de escaneo: ${error.message}`);
-            this.stopScan();
-            return;
-          }
-
-          if (device) {
-            this.processDevice(device, minewOnly);
-          }
-        }
+        this.handleDevice
       );
 
-      console.log('[BleScanner] Scan started successfully');
+      console.log('[BleScanner] Scan started');
       return true;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Error desconocido';
-      this.handleError(`Error al iniciar escaneo: ${message}`);
+    } catch (error: any) {
+      this.handleError(`Error al iniciar escaneo: ${error.message}`);
       this.isScanning = false;
       return false;
     }
   }
 
-  /**
-   * Procesa un dispositivo detectado
-   */
-  private processDevice(device: Device, minewOnly: boolean): void {
-    const mac = device.id;
-    const now = Date.now();
-
-    // Throttling
-    const lastReport = this.lastReportTime.get(mac) || 0;
-    if (now - lastReport < BLE_SCAN_CONFIG.MIN_REPORT_INTERVAL_MS) {
-      return;
-    }
-    this.lastReportTime.set(mac, now);
-
-    // Convertir manufacturer data
-    const manufacturerDataHex = b64ToHex(device.manufacturerData);
-
-    // Si solo queremos Minew, filtrar
-    if (minewOnly && !isMinewBeacon(manufacturerDataHex)) {
-      return;
-    }
-
-    // Crear objeto BleDevice
-    const bleDevice: BleDevice = {
-      id: mac,
-      name: device.name || device.localName || null,
-      rssi: device.rssi ?? -100,
-      manufacturerData: manufacturerDataHex || null,
-      txPowerLevel: device.txPowerLevel ?? null,
-      isConnectable: device.isConnectable ?? null,
-      lastSeen: now,
-    };
-
-    // Guardar dispositivo
-    this.devices.set(mac, bleDevice);
-
-    // Notificar dispositivo encontrado
-    if (this.onDeviceFound) {
-      this.onDeviceFound(bleDevice);
-    }
-
-    // Intentar parsear como Minew
-    if (manufacturerDataHex) {
-      const beacon = parseMinewBeacon(mac, bleDevice.rssi, manufacturerDataHex);
-
-      if (beacon) {
-        this.beacons.set(mac, beacon);
-
-        console.log(
-          `[BleScanner] Minew beacon: ${mac}, RSSI: ${beacon.rssi}, ` +
-            `Temp: ${beacon.temperature ?? 'N/A'}°C, Battery: ${beacon.batteryLevel ?? 'N/A'}%`
-        );
-
-        if (this.onBeaconFound) {
-          this.onBeaconFound(beacon);
-        }
-      }
-    }
-
-    this.lastUpdate = now;
-  }
-
-  /**
-   * Detiene el escaneo
-   */
   stopScan(): void {
     if (!this.isScanning) {
+      console.log('[BleScanner] Not scanning');
       return;
     }
 
-    try {
-      this.manager?.stopDeviceScan();
-    } catch (error) {
-      console.warn('[BleScanner] Error stopping scan:', error);
-    }
+    const manager = this.getManager();
+    manager.stopDeviceScan();
 
     this.isScanning = false;
-    this.updateState(BleScannerState.STOPPED);
+    this.updateState(BleScannerState.IDLE);
+
     console.log('[BleScanner] Scan stopped');
   }
 
-  /**
-   * Destruye el manager
-   */
-  destroy(): void {
-    this.stopScan();
-    this.manager?.destroy();
-    this.manager = null;
-  }
-
-  /**
-   * Limpia los dispositivos y beacons
-   */
-  clearDevices(): void {
+  clear(): void {
     this.devices.clear();
     this.beacons.clear();
     this.lastReportTime.clear();
-    this.notifyStateChange();
+    this.error = null;
+    this.lastUpdate = null;
+  }
+
+  destroy(): void {
+    this.stopScan();
+    this.clear();
+    
+    if (this.manager) {
+      this.manager.destroy();
+      this.manager = null;
+    }
+
+    this.onDeviceFound = null;
+    this.onBeaconFound = null;
+    this.onError = null;
+    this.onStateChange = null;
+
+    BleScanner.instance = null;
   }
 }
-
-// Singleton - pero NO se inicializa BleManager hasta que se use
-export const bleScanner = new BleScanner();
-
-export { BleScanner };

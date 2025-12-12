@@ -1,7 +1,3 @@
-/**
- * Auth Context
- */
-
 import React, {
   createContext,
   useContext,
@@ -24,24 +20,20 @@ import { isTokenExpired } from '@/utils/jwt';
 import type { User, LoginCredentials } from '@/types';
 
 interface AuthContextType {
-  // Estado
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
-  // Acciones
   login: (credentials: LoginCredentials) => Promise<boolean>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<boolean>;
   clearError: () => void;
-  // Biometría
   biometricAvailable: boolean;
   biometricEnabled: boolean;
   biometricType: string;
   enableBiometric: (username: string, password: string) => Promise<boolean>;
   disableBiometric: () => Promise<void>;
   loginWithBiometric: () => Promise<boolean>;
-  // 🆕 Control de biometría automática
   shouldPromptBiometric: boolean;
   clearBiometricPrompt: () => void;
 }
@@ -57,61 +49,37 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // Estado de biometría
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [biometricType, setBiometricType] = useState('');
-  
-  // 🆕 Control para biometría automática
-  // true = app recién abierta, mostrar biometría
-  // false = usuario cerró sesión o ya intentó, no mostrar automático
   const [shouldPromptBiometric, setShouldPromptBiometric] = useState(true);
-
   const isInitialized = useRef(false);
   const appState = useRef(AppState.currentState);
-
   const clearAuthState = useCallback(() => {
     setUser(null);
     setIsAuthenticated(false);
     setError(null);
   }, []);
-
-  /**
-   * 🆕 Limpia el prompt de biometría (después de logout o intento)
-   */
   const clearBiometricPrompt = useCallback(() => {
     setShouldPromptBiometric(false);
   }, []);
-
   const logout = useCallback(async () => {
     await AuthService.logout();
     clearAuthState();
-    // 🆕 Después de logout, NO mostrar biometría automática
     setShouldPromptBiometric(false);
   }, [clearAuthState]);
-
-  /**
-   * Inicializa la biometría
-   */
   const initializeBiometric = useCallback(async () => {
     const available = await BiometricService.isAvailable();
     setBiometricAvailable(available);
-
     if (available) {
       const type = await BiometricService.getBiometricName();
       setBiometricType(type);
-
       const enabled = await BiometricService.isEnabled();
       const hasCredentials = await BiometricService.hasStoredCredentials();
-      
       setBiometricEnabled(enabled && hasCredentials);
     }
   }, []);
 
-  /**
-   * Habilitar biometría con credenciales
-   */
   const enableBiometric = useCallback(
     async (username: string, password: string): Promise<boolean> => {
       const success = await BiometricService.enable(username, password);
@@ -123,24 +91,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
     []
   );
 
-  /**
-   * Deshabilitar biometría
-   */
   const disableBiometric = useCallback(async () => {
     await BiometricService.disable();
     setBiometricEnabled(false);
   }, []);
 
-  /**
-   * Login con biometría
-   */
   const loginWithBiometric = useCallback(async (): Promise<boolean> => {
     if (isAuthenticated) {
       return true;
     }
 
     setError(null);
-    // 🆕 Marcar que ya se intentó
     setShouldPromptBiometric(false);
 
     try {
@@ -176,14 +137,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [isAuthenticated]);
 
-  /**
-   * Login con credenciales
-   */
   const login = useCallback(
     async (credentials: LoginCredentials): Promise<boolean> => {
       setIsLoading(true);
       setError(null);
-      // 🆕 Deshabilitar prompt automático cuando intenta login manual
       setShouldPromptBiometric(false);
 
       try {
@@ -232,7 +189,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         return false;
       }
 
-      const storedUser = await AuthService.getStoredUser();
+      const storedUser = await AuthService.getCurrentUser();
       if (storedUser) {
         setUser(storedUser);
         setIsAuthenticated(true);
@@ -250,16 +207,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setError(null);
   }, []);
 
-  /**
-   * Inicializar autenticación
-   */
   const initializeAuth = useCallback(async () => {
     try {
       await initializeBiometric();
 
       const hasSession = await AuthService.hasActiveSession();
       if (!hasSession) {
-        // 🆕 App abierta sin sesión, permitir prompt biométrico
         setShouldPromptBiometric(true);
         setIsLoading(false);
         return;
@@ -267,7 +220,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       const hasTokens = await initializeTokens();
       if (!hasTokens) {
-        // 🆕 Sesión inválida, permitir prompt biométrico
         setShouldPromptBiometric(true);
         await AuthService.logout();
         setIsLoading(false);
@@ -276,15 +228,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       const token = getAccessToken();
       if (token && !isTokenExpired(token)) {
-        const storedUser = await AuthService.getStoredUser();
+        const storedUser = await AuthService.getCurrentUser();
         if (storedUser) {
           setUser(storedUser);
           setIsAuthenticated(true);
-          // 🆕 Ya autenticado, no necesita prompt
           setShouldPromptBiometric(false);
         }
       } else {
-        // 🆕 Token expirado, permitir prompt biométrico
         setShouldPromptBiometric(true);
       }
     } catch (err) {
@@ -318,8 +268,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   useEffect(() => {
     const unsubscribe = onTokenExpired(() => {
-      console.log('[AuthContext] Token expired, logging out');
-      // 🆕 Token expiró, permitir prompt biométrico al volver a login
       setShouldPromptBiometric(true);
       clearAuthState();
     });
@@ -347,7 +295,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       enableBiometric,
       disableBiometric,
       loginWithBiometric,
-      // 🆕
       shouldPromptBiometric,
       clearBiometricPrompt,
     }),

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { ActivityIndicator } from 'react-native';
-import { Eye, EyeOff } from 'lucide-react-native'; // Importar desde lucide
+import { Eye, EyeOff } from 'lucide-react-native';
 import { useAuth } from '@/context';
 import { Input, InputField, InputIcon, InputSlot } from '@/components/ui/input';
 import { FormControl } from '@/components/ui/form-control';

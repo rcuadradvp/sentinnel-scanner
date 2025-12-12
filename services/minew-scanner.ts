@@ -1,7 +1,3 @@
-/**
- * Minew Scanner Service
- */
-
 import { NativeModules, NativeEventEmitter, Platform } from 'react-native';
 
 const { MinewScanner } = NativeModules;

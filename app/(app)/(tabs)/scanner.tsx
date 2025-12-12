@@ -1,7 +1,3 @@
-/**
- * BLE Scanner Screen - Minew SDK
- */
-
 import { useMemo } from 'react';
 import {
   View,
@@ -25,9 +21,6 @@ export default function ScannerScreen() {
     clearDevices,
   } = useMinewScanner();
 
-  /**
-   * Toggle escaneo
-   */
   const handleToggleScan = async () => {
     if (isScanning) {
       stopScan();
@@ -36,16 +29,10 @@ export default function ScannerScreen() {
     }
   };
 
-  /**
-   * Lista ordenada por RSSI
-   */
   const sortedBeacons = useMemo(() => {
     return [...beacons].sort((a, b) => b.rssi - a.rssi);
   }, [beacons]);
 
-  /**
-   * Obtiene el nombre del tipo de frame
-   */
   const getFrameTypeName = (frames: MinewBeacon['frames']): string => {
     if (!frames || frames.length === 0) return 'Unknown';
     
@@ -60,9 +47,6 @@ export default function ScannerScreen() {
     return frames[0]?.frameType || 'Unknown';
   };
 
-  /**
-   * Renderiza un beacon
-   */
   const renderBeacon = ({ item }: { item: MinewBeacon }) => (
     <View className="bg-white rounded-xl p-4 mb-3 shadow-sm border border-gray-100">
       <View className="flex-row justify-between items-start mb-2">
@@ -129,7 +113,6 @@ export default function ScannerScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top']}>
-      {/* Header */}
       <View className="bg-white px-4 py-3 border-b border-gray-200">
         <View className="flex-row items-center justify-between">
           <View className="flex-row items-center flex-1">
@@ -154,14 +137,10 @@ export default function ScannerScreen() {
             </Text>
           </Pressable>
         </View>
-
-        {/* Error message */}
         {error && !isScanning && (
           <Text className="text-red-500 text-xs mt-2">{error}</Text>
         )}
       </View>
-
-      {/* Lista de beacons */}
       <FlatList
         data={sortedBeacons}
         keyExtractor={(item) => item.mac}

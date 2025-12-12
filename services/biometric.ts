@@ -1,8 +1,3 @@
-/**
- * Biometric Service
- *
- * Maneja autenticación biométrica con credenciales encriptadas.
- */
 
 import * as LocalAuthentication from 'expo-local-authentication';
 import { SecureStorage, AppStorage } from '@/services/storage';
@@ -21,9 +16,6 @@ export interface StoredCredentials {
 }
 
 export const BiometricService = {
-  /**
-   * Verifica si el dispositivo tiene hardware biométrico
-   */
   async isAvailable(): Promise<boolean> {
     try {
       const hasHardware = await LocalAuthentication.hasHardwareAsync();
@@ -34,9 +26,6 @@ export const BiometricService = {
     }
   },
 
-  /**
-   * Obtiene el tipo de biometría disponible
-   */
   async getBiometricType(): Promise<BiometricType> {
     try {
       const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
@@ -57,9 +46,6 @@ export const BiometricService = {
     }
   },
 
-  /**
-   * Obtiene el nombre amigable del tipo de biometría
-   */
   async getBiometricName(): Promise<string> {
     const type = await this.getBiometricType();
     
@@ -75,9 +61,6 @@ export const BiometricService = {
     }
   },
 
-  /**
-   * Solicita autenticación biométrica
-   */
   async authenticate(promptMessage?: string): Promise<BiometricResult> {
     try {
       const biometricName = await this.getBiometricName();
@@ -109,20 +92,14 @@ export const BiometricService = {
     }
   },
 
-  /**
-   * Verifica si el usuario tiene biometría habilitada
-   */
   async isEnabled(): Promise<boolean> {
     const enabled = await AppStorage.get(AsyncStorageKeys.BIOMETRIC_ENABLED);
     return enabled === 'true';
   },
 
-  /**
-   * 🆕 Guarda las credenciales encriptadas y habilita biometría
-   */
   async enable(username: string, password: string): Promise<boolean> {
     try {
-      // Primero verificar biometría
+
       const authResult = await this.authenticate(
         'Verifica tu identidad para habilitar inicio rápido'
       );
@@ -131,13 +108,10 @@ export const BiometricService = {
         return false;
       }
 
-      // Guardar credenciales encriptadas en SecureStore
       await SecureStorage.set(SecureStorageKeys.BIOMETRIC_USERNAME, username);
       await SecureStorage.set(SecureStorageKeys.BIOMETRIC_PASSWORD, password);
-      
-      // Marcar como habilitado
       await AppStorage.set(AsyncStorageKeys.BIOMETRIC_ENABLED, 'true');
-      
+    
       return true;
     } catch (error) {
       console.error('[Biometric] Error enabling:', error);
@@ -146,7 +120,7 @@ export const BiometricService = {
   },
 
   /**
-   * 🆕 Deshabilita biometría y elimina credenciales
+   * Deshabilita biometría y elimina credenciales
    */
   async disable(): Promise<boolean> {
     try {
@@ -164,21 +138,16 @@ export const BiometricService = {
    */
   async getCredentials(): Promise<StoredCredentials | null> {
     try {
-      // Primero verificar biometría
       const authResult = await this.authenticate();
 
       if (!authResult.success) {
-        // Usuario canceló o falló - NO es error, solo retornar null
-        console.log('[Biometric] Auth cancelled or failed:', authResult.error);
         return null;
       }
 
-      // Obtener credenciales encriptadas
       const username = await SecureStorage.get(SecureStorageKeys.BIOMETRIC_USERNAME);
       const password = await SecureStorage.get(SecureStorageKeys.BIOMETRIC_PASSWORD);
 
       if (!username || !password) {
-        console.log('[Biometric] No credentials found');
         await this.disable();
         return null;
       }
@@ -190,9 +159,6 @@ export const BiometricService = {
     }
   },
 
-  /**
-   * 🆕 Verifica si hay credenciales guardadas
-   */
   async hasStoredCredentials(): Promise<boolean> {
     const username = await SecureStorage.get(SecureStorageKeys.BIOMETRIC_USERNAME);
     const password = await SecureStorage.get(SecureStorageKeys.BIOMETRIC_PASSWORD);

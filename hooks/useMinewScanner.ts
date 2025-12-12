@@ -1,7 +1,3 @@
-/**
- * useMinewScanner Hook
- */
-
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { AppState, AppStateStatus, Platform, Linking, Alert } from 'react-native';
 import { 
@@ -10,7 +6,8 @@ import {
   BluetoothState, 
 } from '@/services/minew-scanner';
 import { BlePermissionsService } from '@/services/ble-permissions';
-import type { BlePermissions } from '@/types';
+import { DeviceService } from '@/services/device';
+import type { BlePermissions, AuthorizedDevicesMap } from '@/types';
 
 interface UseMinewScanner {
   isScanning: boolean;
@@ -18,9 +15,11 @@ interface UseMinewScanner {
   bluetoothState: BluetoothState | null;
   beacons: MinewBeacon[];
   error: string | null;
+  authorizedDevicesCount: number;
   startScan: () => Promise<boolean>;
   stopScan: () => Promise<void>;
   clearDevices: () => void;
+  reloadAuthorizedDevices: () => Promise<void>;
 }
 
 export function useMinewScanner(): UseMinewScanner {
@@ -32,10 +31,23 @@ export function useMinewScanner(): UseMinewScanner {
 
   const appState = useRef(AppState.currentState);
   const beaconsMapRef = useRef<Map<string, MinewBeacon>>(new Map());
+  const authorizedDevicesMapRef = useRef<AuthorizedDevicesMap>({});
 
-  /**
-   * Inicializa el SDK
-   */
+  const loadAuthorizedDevices = useCallback(async () => {
+    try {
+      const devicesMap = await DeviceService.getAuthorizedDevicesMap();
+      authorizedDevicesMapRef.current = devicesMap || {};
+      const deviceCount = Object.keys(authorizedDevicesMapRef.current).length;
+    } catch (error) {
+      console.error('[useMinewScanner] Error loading authorized devices:', error);
+      authorizedDevicesMapRef.current = {};
+    }
+  }, []);
+
+  const reloadAuthorizedDevices = useCallback(async () => {
+    await loadAuthorizedDevices();
+  }, [loadAuthorizedDevices]);
+
   const initialize = useCallback(async (): Promise<boolean> => {
     if (Platform.OS !== 'android') {
       setError('Minew SDK solo disponible en Android');
@@ -68,14 +80,10 @@ export function useMinewScanner(): UseMinewScanner {
     }
   }, []);
 
-  /**
-   * Solicita permisos y muestra popup del sistema
-   */
   const requestPermissions = useCallback(async (): Promise<boolean> => {
     const perms = await BlePermissionsService.request();
     
     if (!perms.allGranted) {
-      // Si los permisos fueron denegados permanentemente, abrir configuración
       const currentPerms = await BlePermissionsService.check();
       if (!currentPerms.allGranted) {
         Alert.alert(
@@ -96,14 +104,11 @@ export function useMinewScanner(): UseMinewScanner {
     return perms.allGranted;
   }, []);
 
-  /**
-   * Inicia el escaneo - solicita permisos automáticamente si es necesario
-   */
   const startScan = useCallback(async (): Promise<boolean> => {
     try {
       setError(null);
+      await loadAuthorizedDevices();
 
-      // Verificar y solicitar permisos
       const currentPerms = await BlePermissionsService.check();
       if (!currentPerms.allGranted) {
         const granted = await requestPermissions();
@@ -112,7 +117,6 @@ export function useMinewScanner(): UseMinewScanner {
         }
       }
 
-      // Inicializar si no está inicializado
       if (!isInitialized) {
         const initialized = await initialize();
         if (!initialized) {
@@ -120,7 +124,6 @@ export function useMinewScanner(): UseMinewScanner {
         }
       }
 
-      // Verificar Bluetooth
       const btState = await minewScanner.getBluetoothState();
       setBluetoothState(btState);
 
@@ -134,82 +137,86 @@ export function useMinewScanner(): UseMinewScanner {
         return false;
       }
 
-      // Limpiar beacons anteriores
       beaconsMapRef.current.clear();
       setBeacons([]);
 
+      minewScanner.setCallbacks({
+        onBeaconFound: (beacon: MinewBeacon) => {
+
+          const authorizedName = authorizedDevicesMapRef.current[beacon.mac];
+
+          if (!authorizedName) {
+            return;
+          }
+
+          const authorizedBeacon: MinewBeacon = {
+            ...beacon,
+            name: authorizedName,
+          };
+
+          beaconsMapRef.current.set(beacon.mac, authorizedBeacon);
+          
+          setBeacons(() => {
+            const updated = Array.from(beaconsMapRef.current.values());
+            return updated;
+          });
+
+        },
+        
+        onScanStateChanged: (state) => {
+          setIsScanning(state.isScanning);
+        },
+        
+        onBluetoothStateChanged: (state) => {
+          setBluetoothState(state);
+          if (!state.isOn && isScanning) {
+            setError('Bluetooth se apagó');
+            stopScan();
+          }
+        },
+        
+        onError: (errorMsg) => {
+          console.error('[useMinewScanner] SDK Error:', errorMsg);
+          setError(errorMsg);
+        },
+      });
+
       const success = await minewScanner.startScan();
+      
       if (success) {
         setIsScanning(true);
       } else {
-        const initError = minewScanner.getInitError();
-        setError(initError || 'No se pudo iniciar el escaneo');
+        setError('No se pudo iniciar el escaneo');
+        console.error('[useMinewScanner] Failed to start scan');
       }
 
       return success;
     } catch (err: any) {
       const message = err?.message || 'Error al iniciar escaneo';
       setError(message);
+      console.error('[useMinewScanner] Start scan error:', err);
       return false;
     }
-  }, [isInitialized, initialize, requestPermissions]);
+  }, [isInitialized, isScanning, initialize, requestPermissions, loadAuthorizedDevices]);
 
-  /**
-   * Detiene el escaneo
-   */
   const stopScan = useCallback(async (): Promise<void> => {
     await minewScanner.stopScan();
     setIsScanning(false);
   }, []);
 
-  /**
-   * Limpia dispositivos
-   */
-  const clearDevices = useCallback((): void => {
+  const clearDevices = useCallback(() => {
     beaconsMapRef.current.clear();
     setBeacons([]);
     minewScanner.clearCache();
   }, []);
 
-  /**
-   * Configura callbacks del scanner
-   */
   useEffect(() => {
-    minewScanner.setCallbacks({
-      onBeaconFound: (beacon) => {
-        beaconsMapRef.current.set(beacon.mac, beacon);
-        setBeacons(Array.from(beaconsMapRef.current.values()));
-      },
-      onScanStateChanged: (state) => {
-        setIsScanning(state.isScanning);
-      },
-      onBluetoothStateChanged: (state) => {
-        setBluetoothState(state);
-        if (!state.isOn && isScanning) {
-          setIsScanning(false);
-          setError('Bluetooth se ha apagado');
-        }
-      },
-      onError: (errorMsg) => {
-        setError(errorMsg);
-      },
-    });
+    loadAuthorizedDevices();
+  }, [loadAuthorizedDevices]);
 
-    return () => {
-      minewScanner.setCallbacks({});
-    };
-  }, [isScanning]);
-
-  /**
-   * Manejar cambios de estado de la app
-   */
   useEffect(() => {
     const handleAppStateChange = async (nextAppState: AppStateStatus) => {
-      if (
-        appState.current.match(/inactive|background/) &&
-        nextAppState === 'active'
-      ) {
-        // App vuelve a foreground - verificar estado del bluetooth
+      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
         const btState = await minewScanner.getBluetoothState();
         setBluetoothState(btState);
       }
@@ -220,14 +227,24 @@ export function useMinewScanner(): UseMinewScanner {
     return () => subscription.remove();
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (isScanning) {
+        stopScan();
+      }
+    };
+  }, [isScanning, stopScan]);
+
   return {
     isScanning,
     isInitialized,
     bluetoothState,
     beacons,
     error,
+    authorizedDevicesCount: Object.keys(authorizedDevicesMapRef.current).length,
     startScan,
     stopScan,
     clearDevices,
+    reloadAuthorizedDevices,
   };
 }

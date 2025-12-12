@@ -1,7 +1,3 @@
-/**
- * Root Layout
- */
-
 import { useEffect } from 'react';
 import { Slot, useRouter, useSegments, useRootNavigationState } from 'expo-router';
 import { View, ActivityIndicator } from 'react-native';
@@ -23,10 +19,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     const inAuthGroup = segments[0] === '(auth)';
 
     if (isAuthenticated && inAuthGroup) {
-      // Autenticado en rutas públicas → ir a home
       router.replace('/(app)/(tabs)/home');
     } else if (!isAuthenticated && !inAuthGroup) {
-      // No autenticado en rutas privadas → ir a login
       router.replace('/(auth)/login');
     }
   }, [isAuthenticated, isLoading, segments, navigationState?.key]);

@@ -1,23 +1,16 @@
-/**
- * useBleScanner Hook
- * 
- * Hook para usar el scanner BLE en componentes React.
- */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
-import { bleScanner } from '@/services/ble-scanner';
+import { BleScanner } from '@/services/ble-scanner';
 import { BlePermissionsService } from '@/services/ble-permissions';
 import type { BleDevice, MinewBeacon, BleScannerStatus, BlePermissions } from '@/types';
 import { BleScannerState } from '@/constants/ble';
 
 interface UseBleScanner {
-  // Estado
   status: BleScannerStatus;
   devices: BleDevice[];
   beacons: MinewBeacon[];
   permissions: BlePermissions | null;
-  // Acciones
   startScan: (minewOnly?: boolean) => Promise<boolean>;
   stopScan: () => void;
   requestPermissions: () => Promise<boolean>;
@@ -37,11 +30,18 @@ export function useBleScanner(): UseBleScanner {
   const [permissions, setPermissions] = useState<BlePermissions | null>(null);
 
   const appState = useRef(AppState.currentState);
+  const bleScannerRef = useRef<BleScanner | null>(null);
 
-  /**
-   * Configura callbacks del scanner
-   */
+  const getBleScanner = useCallback((): BleScanner => {
+    if (!bleScannerRef.current) {
+      bleScannerRef.current = BleScanner.getInstance();
+    }
+    return bleScannerRef.current;
+  }, []);
+
   useEffect(() => {
+    const bleScanner = getBleScanner();
+
     bleScanner.setCallbacks({
       onDeviceFound: (device) => {
         setDevices((prev) => {
@@ -73,31 +73,23 @@ export function useBleScanner(): UseBleScanner {
       },
     });
 
-    // Verificar permisos iniciales
     checkPermissions();
 
-    // Cleanup
     return () => {
       bleScanner.setCallbacks({});
     };
-  }, []);
+  }, [getBleScanner]);
 
-  /**
-   * Manejar cambios de estado de la app
-   */
   useEffect(() => {
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
       if (
         appState.current === 'active' &&
         nextAppState.match(/inactive|background/)
       ) {
-        // App va a background - podríamos detener escaneo
-        // O mantenerlo según la necesidad
       } else if (
         appState.current.match(/inactive|background/) &&
         nextAppState === 'active'
       ) {
-        // App vuelve a foreground - verificar permisos
         checkPermissions();
       }
       appState.current = nextAppState;
@@ -107,47 +99,35 @@ export function useBleScanner(): UseBleScanner {
     return () => subscription.remove();
   }, []);
 
-  /**
-   * Verifica permisos
-   */
   const checkPermissions = async (): Promise<void> => {
     const perms = await BlePermissionsService.check();
     setPermissions(perms);
   };
 
-  /**
-   * Solicita permisos
-   */
   const requestPermissions = useCallback(async (): Promise<boolean> => {
     const perms = await BlePermissionsService.request();
     setPermissions(perms);
     return perms.allGranted;
   }, []);
 
-  /**
-   * Inicia escaneo
-   */
   const startScan = useCallback(async (minewOnly: boolean = false): Promise<boolean> => {
     setDevices([]);
     setBeacons([]);
+    const bleScanner = getBleScanner();
     return bleScanner.startScan({ minewOnly });
-  }, []);
+  }, [getBleScanner]);
 
-  /**
-   * Detiene escaneo
-   */
   const stopScan = useCallback((): void => {
+    const bleScanner = getBleScanner();
     bleScanner.stopScan();
-  }, []);
+  }, [getBleScanner]);
 
-  /**
-   * Limpia dispositivos
-   */
   const clearDevices = useCallback((): void => {
-    bleScanner.clearDevices();
+    const bleScanner = getBleScanner();
+    bleScanner.clear(); 
     setDevices([]);
     setBeacons([]);
-  }, []);
+  }, [getBleScanner]);
 
   return {
     status,

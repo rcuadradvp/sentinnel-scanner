@@ -8,8 +8,6 @@ export interface MinewBeaconNative {
   rssi: number;
   rawData: string;
   timestamp: number;
-  
-  // Datos opcionales según el frame type
   temperature?: number;
   humidity?: number;
   battery?: number;
@@ -19,23 +17,18 @@ export interface MinewBeaconNative {
     y: number;
     z: number;
   };
-  
-  // iBeacon
+
   uuid?: string;
   major?: number;
   minor?: number;
   measuredPower?: number;
-  
-  // Otros sensores
+
   lightLevel?: number;
-  doorStatus?: number; // 0=cerrado, 1=abierto
+  doorStatus?: number;
   name?: string;
   macAddress?: string;
 }
 
-/**
- * Parsea beacon usando el SDK oficial de Minew
- */
 export async function parseMinewNative(
   manufacturerDataHex: string,
   rssi: number
@@ -54,9 +47,6 @@ export async function parseMinewNative(
   }
 }
 
-/**
- * Verifica si el native module está disponible
- */
 export function isMinewParserAvailable(): boolean {
   return MinewParser !== undefined;
 }

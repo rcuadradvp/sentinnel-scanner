@@ -1,25 +1,15 @@
-/**
- * BLE Types
- */
-
 import type { BleScannerStateType } from '@/constants/ble';
 
-/**
- * Dispositivo BLE detectado
- */
 export interface BleDevice {
-  id: string; // MAC address o UUID
+  id: string;
   name: string | null;
   rssi: number;
-  manufacturerData: string | null; // Hex string
+  manufacturerData: string | null;
   txPowerLevel: number | null;
   isConnectable: boolean | null;
-  lastSeen: number; // Timestamp
+  lastSeen: number;
 }
 
-/**
- * Beacon Minew parseado
- */
 export interface MinewBeacon {
   mac: string;
   rssi: number;
@@ -33,18 +23,15 @@ export interface MinewBeacon {
     y: number;
     z: number;
   } | null;
-  // iBeacon data
   uuid: string | null;
   major: number | null;
   minor: number | null;
-  // Raw data
   rawData: string;
   timestamp: number;
+  authorizedName?: string;
+  isAuthorized?: boolean;
 }
 
-/**
- * Estado del scanner
- */
 export interface BleScannerStatus {
   state: BleScannerStateType;
   isScanning: boolean;
@@ -53,9 +40,6 @@ export interface BleScannerStatus {
   lastUpdate: number | null;
 }
 
-/**
- * Permisos BLE
- */
 export interface BlePermissions {
   bluetooth: boolean;
   bluetoothScan: boolean;
@@ -64,9 +48,6 @@ export interface BlePermissions {
   allGranted: boolean;
 }
 
-/**
- * Resultado de escaneo para enviar al servidor
- */
 export interface BleReading {
   mac: string;
   rssi: number;
@@ -77,9 +58,6 @@ export interface BleReading {
   parsed: MinewBeacon | null;
 }
 
-/**
- * Callback para dispositivos detectados
- */
 export type OnDeviceFoundCallback = (device: BleDevice) => void;
 export type OnBeaconFoundCallback = (beacon: MinewBeacon) => void;
 export type OnErrorCallback = (error: string) => void;

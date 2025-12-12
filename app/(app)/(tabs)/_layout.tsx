@@ -1,7 +1,3 @@
-/**
- * App Layout - Tabs Navigation
- */
-
 import { Tabs } from 'expo-router';
 import { Icon } from '@/components/ui/icon';
 import { Home, Bluetooth, User } from 'lucide-react-native';

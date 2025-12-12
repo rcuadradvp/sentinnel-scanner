@@ -1,9 +1,3 @@
-/**
- * BLE Permissions Service
- * 
- * Maneja permisos de Bluetooth y ubicación para escaneo BLE.
- */
-
 import { Platform, PermissionsAndroid, Alert, Linking } from 'react-native';
 import type { BlePermissions } from '@/types';
 
@@ -132,7 +126,6 @@ export const BlePermissionsService = {
           allGranted,
         };
       } else {
-        // Android 11 y anteriores
         const result = await PermissionsAndroid.request(
           PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
           {
@@ -169,9 +162,6 @@ export const BlePermissionsService = {
     }
   },
 
-  /**
-   * Muestra alerta cuando se deniegan permisos
-   */
   showPermissionDeniedAlert(permission: string): void {
     Alert.alert(
       'Permisos requeridos',
