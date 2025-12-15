@@ -11,6 +11,8 @@ export interface BleDevice {
 }
 
 export interface MinewBeacon {
+  name: string;
+  battery: number;
   mac: string;
   rssi: number;
   frameType: number;

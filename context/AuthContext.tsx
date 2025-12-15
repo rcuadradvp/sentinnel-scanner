@@ -1,3 +1,4 @@
+// context/AuthContext.tsx
 import React, {
   createContext,
   useContext,
@@ -8,6 +9,7 @@ import React, {
   useRef,
 } from 'react';
 import { AppState, AppStateStatus, Alert } from 'react-native';
+import { router } from 'expo-router';
 import { AuthService } from '@/services/auth';
 import { BiometricService } from '@/services/biometric';
 import {
@@ -55,19 +57,29 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [shouldPromptBiometric, setShouldPromptBiometric] = useState(true);
   const isInitialized = useRef(false);
   const appState = useRef(AppState.currentState);
+
   const clearAuthState = useCallback(() => {
     setUser(null);
     setIsAuthenticated(false);
     setError(null);
   }, []);
+
   const clearBiometricPrompt = useCallback(() => {
     setShouldPromptBiometric(false);
   }, []);
+
   const logout = useCallback(async () => {
+  try {
     await AuthService.logout();
     clearAuthState();
     setShouldPromptBiometric(false);
-  }, [clearAuthState]);
+  } catch (error) {
+    console.error('[Auth] Logout error:', error);
+    clearAuthState();
+    setShouldPromptBiometric(false);
+  }
+}, [clearAuthState]);
+
   const initializeBiometric = useCallback(async () => {
     const available = await BiometricService.isAvailable();
     setBiometricAvailable(available);

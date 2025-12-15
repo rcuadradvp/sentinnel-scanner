@@ -1,3 +1,4 @@
+// app/_layout.tsx
 import { useEffect } from 'react';
 import { Slot, useRouter, useSegments, useRootNavigationState } from 'expo-router';
 import { View, ActivityIndicator } from 'react-native';
@@ -19,8 +20,10 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     const inAuthGroup = segments[0] === '(auth)';
 
     if (isAuthenticated && inAuthGroup) {
-      router.replace('/(app)/(tabs)/home');
+      // Autenticado en auth → ir a app
+      router.replace('/(app)/(tabs)/profile');
     } else if (!isAuthenticated && !inAuthGroup) {
+      // No autenticado fuera de auth → ir a login
       router.replace('/(auth)/login');
     }
   }, [isAuthenticated, isLoading, segments, navigationState?.key]);
