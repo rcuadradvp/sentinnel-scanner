@@ -2,7 +2,13 @@ import api from '@/services/api';
 import { AppStorage } from '@/services/storage';
 import { AsyncStorageKeys } from '@/constants/storage';
 import { Endpoints } from '@/constants/api';
-import type { Device, AuthorizedDevicesMap, DevicesResponse } from '@/types';
+import type { 
+  Device, 
+  AuthorizedDevicesMap, 
+  DevicesResponse,
+  UnassignedDevice,
+  UnassignedDevicesResponse 
+} from '@/types';
 
 function formatMacWithColons(mac: string): string {
   if (!mac) return '';
@@ -107,4 +113,41 @@ export const DeviceService = {
       return { authorized: false };
     }
   },
+
+  async fetchUnassignedDevices(): Promise<UnassignedDevice[]> {
+    try {
+      const response = await api.get<UnassignedDevicesResponse>(
+        Endpoints.DEVICES.UNASSIGNED
+      );
+      return response.data.data.devices;
+    } catch (error) {
+      console.error('[DeviceService] Error fetching unassigned devices:', error);
+      throw error;
+    }
+  },
+
+  async createDevice(payload: any): Promise<UnassignedDevice> {
+    try {
+      const response = await api.post<{ data: UnassignedDevice }>(
+        Endpoints.DEVICES.BASE,
+        payload
+      );
+      return response.data.data;
+    } catch (error: any) {
+      console.error('[DeviceService] Error creating device:', error);
+      throw error;
+    }
+  },
+
+  async checkMACExists(mac: string): Promise<boolean> {
+    try {
+      // Intentar buscar el device por MAC
+      const response = await api.get(`${Endpoints.DEVICES.BASE}?mac=${mac}`);
+      return response.data.data.length > 0;
+    } catch (error) {
+      // Si falla la búsqueda, asumimos que no existe
+      return false;
+    }
+  },
+
 };

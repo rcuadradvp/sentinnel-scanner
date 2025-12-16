@@ -4,9 +4,15 @@ import { Icon } from '@/components/ui/icon';
 import { Radar, SmartphoneNfc, User } from 'lucide-react-native';
 import { usePermissions } from '@/hooks/usePermissions';
 import { PermissionGuard } from '@/components/shared/PermissionGuard';
+import { usePathname } from 'expo-router';
 
 export default function AppLayout() {
   const { canAccessTab } = usePermissions();
+  const pathname = usePathname();
+
+  const shouldHideTabs = 
+    pathname.includes('/devices/assigned') || 
+    pathname.includes('/devices/unassigned');
 
   return (
     <PermissionGuard>
@@ -15,10 +21,12 @@ export default function AppLayout() {
           headerShown: false,
           tabBarActiveTintColor: '#333',
           tabBarInactiveTintColor: '#999',
-          tabBarStyle: {
-            backgroundColor: '#fff',
-            borderTopColor: '#eee',
-          },
+          tabBarStyle: shouldHideTabs
+            ? { display: 'none' }
+            : {
+                backgroundColor: '#fff',
+                borderTopColor: '#eee',
+              },
         }}
       >
         {/* Devices Tab */}

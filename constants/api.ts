@@ -45,6 +45,7 @@ export const Endpoints = {
   DEVICES: {
     BASE: '/devices',
     BY_ID: (uuid: string) => `/devices/${uuid}`,
+    UNASSIGNED: '/unassociated-devices',
   },
 
   GATEWAYS: {
