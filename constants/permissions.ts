@@ -11,6 +11,7 @@ export const AppPaths = {
   // Gateway
   GATEWAY: 'GATEWAY',
   GATEWAYS_BY_ZONE: 'GATEWAYS_BY_ZONE',
+  MASTER_GATEWAYS: 'MASTER_GATEWAYS', // ✅ Nuevo path para master
   
   // Alerts
   ALERTS: 'ALERTS',
@@ -23,7 +24,6 @@ export const AppPaths = {
 
 export type AppPath = typeof AppPaths[keyof typeof AppPaths];
 
-// ✅ Interface para definir permisos de tabs
 interface TabPermission {
   requiredPaths: AppPath[];
   anyOf?: boolean;
@@ -31,22 +31,25 @@ interface TabPermission {
   icon: string;
 }
 
-// Mapeo de paths a tabs de la app
 export const TabPermissions: Record<string, TabPermission> = {
   scanner: {
-    requiredPaths: [], // ✅ Siempre visible
+    requiredPaths: [],
     label: 'Scanner',
     icon: 'Bluetooth',
   },
   devices: {
-    // Requiere al menos uno de estos
     requiredPaths: [AppPaths.DEVICES_ASSIGNED, AppPaths.DEVICES_UNASSIGNED],
-    anyOf: true, // ✅ Con que tenga uno, se muestra el tab
+    anyOf: true,
     label: 'V-tags',
     icon: 'smartphone-nfc',
   },
+  gateways: {
+    requiredPaths: [AppPaths.MASTER_GATEWAYS],
+    label: 'V-gate',
+    icon: 'hdmi-port',
+  },
   profile: {
-    requiredPaths: [], // ✅ Siempre visible
+    requiredPaths: [],
     label: 'Perfil',
     icon: 'User',
   },

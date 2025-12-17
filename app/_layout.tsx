@@ -20,10 +20,9 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     const inAuthGroup = segments[0] === '(auth)';
 
     if (isAuthenticated && inAuthGroup) {
-      // Autenticado en auth → ir a app
-      router.replace('/(app)/(tabs)/profile');
+      // ✅ CAMBIADO: Redirigir a scanner en lugar de profile
+      router.replace('/(app)/(tabs)/scanner');
     } else if (!isAuthenticated && !inAuthGroup) {
-      // No autenticado fuera de auth → ir a login
       router.replace('/(auth)/login');
     }
   }, [isAuthenticated, isLoading, segments, navigationState?.key]);
