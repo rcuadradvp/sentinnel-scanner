@@ -1,4 +1,5 @@
 // components/devices/QRScanner/QRScanner.tsx
+// CORREGIDO PARA EXPO-CAMERA 17.x (SDK 54)
 
 import { useState, useEffect } from 'react';
 import { View, StyleSheet, Dimensions, ActivityIndicator } from 'react-native';
@@ -20,8 +21,16 @@ interface QRScannerProps {
 }
 
 export function QRScanner({ onScan, isScanning }: QRScannerProps) {
+  // ✅ Los permisos viven SOLO aquí, no en AddDeviceModal
   const [permission, requestPermission] = useCameraPermissions();
   const [hasScanned, setHasScanned] = useState(false);
+
+  // Pedir permisos al montar
+  useEffect(() => {
+    if (!permission?.granted && permission?.canAskAgain) {
+      requestPermission();
+    }
+  }, [permission, requestPermission]);
 
   useEffect(() => {
     if (!isScanning) {
@@ -90,29 +99,31 @@ export function QRScanner({ onScan, isScanning }: QRScannerProps) {
 
   return (
     <View style={[styles.container, { height: CAMERA_HEIGHT }]}>
+      {/* ✅ CORRECCIÓN: CameraView SIN children */}
       <CameraView
-        style={styles.camera}
+        style={StyleSheet.absoluteFill}
         facing="back"
         onBarcodeScanned={handleBarCodeScanned}
         barcodeScannerSettings={{
           barcodeTypes: ['qr'],
         }}
-      >
-        <View style={styles.overlay}>
-          <View style={[styles.scanArea, { width: SCAN_AREA_SIZE, height: SCAN_AREA_SIZE }]}>
-            <View style={[styles.corner, styles.topLeft]} />
-            <View style={[styles.corner, styles.topRight]} />
-            <View style={[styles.corner, styles.bottomLeft]} />
-            <View style={[styles.corner, styles.bottomRight]} />
-          </View>
-          
-          <View style={styles.instructionContainer}>
-            <Text style={styles.instruction}>
-              Apunta al código QR del beacon
-            </Text>
-          </View>
+      />
+      
+      {/* ✅ Overlay con posición absoluta FUERA del CameraView */}
+      <View style={styles.overlay} pointerEvents="none">
+        <View style={[styles.scanArea, { width: SCAN_AREA_SIZE, height: SCAN_AREA_SIZE }]}>
+          <View style={[styles.corner, styles.topLeft]} />
+          <View style={[styles.corner, styles.topRight]} />
+          <View style={[styles.corner, styles.bottomLeft]} />
+          <View style={[styles.corner, styles.bottomRight]} />
         </View>
-      </CameraView>
+        
+        <View style={styles.instructionContainer}>
+          <Text style={styles.instruction}>
+            Apunta al código QR del beacon
+          </Text>
+        </View>
+      </View>
     </View>
   );
 }
@@ -124,13 +135,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
     borderRadius: 12,
     overflow: 'hidden',
-  },
-  camera: {
-    flex: 1,
-    width: '100%',
+    position: 'relative',
   },
   overlay: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',

@@ -1,4 +1,5 @@
 // hooks/useAddDevice.ts
+// SIMPLIFICADO: Solo valida formato Minew, el backend verifica duplicados
 
 import { useState, useCallback } from 'react';
 import { DeviceService } from '@/services/device';
@@ -15,30 +16,14 @@ export const useAddDevice = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Solo valida formato Minew, NO verifica existencia
   const validateMAC = useCallback(async (mac: string): Promise<{
     valid: boolean;
     error?: string;
     formatted?: string;
   }> => {
-    // Validar formato Minew
+    // Solo validar formato Minew
     const validation = validateMinewMAC(mac);
-    if (!validation.valid) {
-      return validation;
-    }
-
-    // Verificar si ya existe
-    try {
-      const exists = await DeviceService.checkMACExists(mac);
-      if (exists) {
-        return {
-          valid: false,
-          error: 'Este dispositivo ya está registrado'
-        };
-      }
-    } catch (err) {
-      console.warn('[useAddDevice] Could not check MAC existence');
-    }
-
     return validation;
   }, []);
 
@@ -47,14 +32,6 @@ export const useAddDevice = () => {
     setError(null);
 
     try {
-      // Validar MAC una vez más antes de enviar
-      const validation = await validateMAC(formData.mac);
-      if (!validation.valid) {
-        setError(validation.error || 'MAC inválida');
-        setIsLoading(false);
-        return null;
-      }
-
       const payload: CreateDevicePayload = {
         name: formData.name.trim(),
         mac: formData.mac.replace(/[:\-\s]/g, '').toUpperCase(),
@@ -73,14 +50,15 @@ export const useAddDevice = () => {
 
       return device;
     } catch (err: any) {
+      // El backend retorna el mensaje de error (ej: "ya existe")
       const message = err.response?.data?.message || 'Error al agregar dispositivo';
       setError(message);
-      console.error('[useAddDevice] Error:', err);
+      console.error('[useAddDevice] Error:', err.response?.data || err);
       return null;
     } finally {
       setIsLoading(false);
     }
-  }, [validateMAC]);
+  }, []);
 
   const clearError = useCallback(() => {
     setError(null);

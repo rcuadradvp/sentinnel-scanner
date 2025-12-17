@@ -1,7 +1,7 @@
 // components/devices/AddDeviceModal/AddDeviceModal.tsx
-// GLUESTACK UI V3
+// GLUESTACK UI V3 - CORREGIDO
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Alert, View, Pressable } from 'react-native';
 import {
   Modal,
@@ -21,7 +21,6 @@ import { ManualMACInput } from '@/components/devices/ManualMACInput';
 import { useAddDevice } from '@/hooks';
 import { extractMACFromQR } from '@/utils/mac';
 import type { DevicePriority } from '@/types';
-import { useCameraPermissions } from 'expo-camera';
 
 type Step = 'scanner' | 'manual' | 'form';
 
@@ -35,15 +34,8 @@ export function AddDeviceModal({ isOpen, onClose, onSuccess }: AddDeviceModalPro
   const [step, setStep] = useState<Step>('scanner');
   const [scannedMAC, setScannedMAC] = useState<string | null>(null);
   const { addDevice, validateMAC, isLoading, error, clearError } = useAddDevice();
-  const [permission, requestPermission] = useCameraPermissions();
 
-  // Pedir permisos cuando se abre el modal
-  useEffect(() => {
-    if (isOpen && step === 'scanner' && !permission?.granted) {
-      console.log('[AddDeviceModal] Solicitando permisos de cámara...');
-      requestPermission();
-    }
-  }, [isOpen, step]);
+  // ✅ QUITAMOS useCameraPermissions de aquí - vive solo en QRScanner
 
   // Reset state cuando se cierra
   useEffect(() => {
@@ -55,14 +47,14 @@ export function AddDeviceModal({ isOpen, onClose, onSuccess }: AddDeviceModalPro
       }, 300);
       return () => clearTimeout(timer);
     }
-  }, [isOpen]);
+  }, [isOpen, clearError]);
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     console.log('[AddDeviceModal] Cerrando modal...');
     onClose();
-  };
+  }, [onClose]);
 
-  const handleQRScan = async (qrData: string) => {
+  const handleQRScan = useCallback(async (qrData: string) => {
     console.log('[AddDeviceModal] QR escaneado:', qrData);
     const mac = extractMACFromQR(qrData);
     
@@ -91,9 +83,9 @@ export function AddDeviceModal({ isOpen, onClose, onSuccess }: AddDeviceModalPro
 
     setScannedMAC(validation.formatted || mac);
     setStep('form');
-  };
+  }, [validateMAC]);
 
-  const handleManualSubmit = async (mac: string) => {
+  const handleManualSubmit = useCallback(async (mac: string) => {
     const validation = await validateMAC(mac);
     
     if (!validation.valid) {
@@ -102,9 +94,9 @@ export function AddDeviceModal({ isOpen, onClose, onSuccess }: AddDeviceModalPro
 
     setScannedMAC(validation.formatted || mac);
     setStep('form');
-  };
+  }, [validateMAC]);
 
-  const handleFormSubmit = async (data: { name: string; priority: DevicePriority }) => {
+  const handleFormSubmit = useCallback(async (data: { name: string; priority: DevicePriority }) => {
     if (!scannedMAC) return;
 
     const device = await addDevice({
@@ -137,22 +129,20 @@ export function AddDeviceModal({ isOpen, onClose, onSuccess }: AddDeviceModalPro
         ]
       );
     }
-  };
+  }, [scannedMAC, addDevice, clearError, handleClose, onSuccess]);
 
-  const handleCancel = () => {
+  const handleCancel = useCallback(() => {
     setScannedMAC(null);
     setStep('scanner');
     clearError();
-  };
-
-  // 👇 CLAVE PARA V3: Renderizado condicional
-  if (!isOpen) {
-    return null;
-  }
+  }, [clearError]);
 
   return (
-    <Modal>
-      {/* 👇 IMPORTANTE: ModalBackdrop SIN onPress para evitar cierre */}
+    <Modal
+      isOpen={isOpen}
+      onClose={handleClose}
+      size="lg"
+    >
       <ModalBackdrop />
       
       <ModalContent className="max-h-[85%] w-[90%]">

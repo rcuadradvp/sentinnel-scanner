@@ -1,50 +1,23 @@
 'use client';
+// components/ui/modal/index.tsx
+// WORKAROUND: Modal SIN animaciones para Expo SDK 54 + gluestack-ui v3
+// Issue: https://github.com/gluestack/gluestack-ui/issues/3251
+
 import React from 'react';
-import { createModal } from '@gluestack-ui/core/modal/creator';
-import { Pressable, View, ScrollView, ViewStyle } from 'react-native';
-import {
-  Motion,
-  AnimatePresence,
-  createMotionAnimatedComponent,
-  MotionComponentProps,
-} from '@legendapp/motion';
+import { 
+  Modal as RNModal, 
+  View, 
+  Pressable, 
+  ScrollView,
+  StyleSheet,
+  ViewStyle,
+} from 'react-native';
 import { tva } from '@gluestack-ui/utils/nativewind-utils';
-import {
-  withStyleContext,
-  useStyleContext,
-} from '@gluestack-ui/utils/nativewind-utils';
-import { cssInterop } from 'nativewind';
 import type { VariantProps } from '@gluestack-ui/utils/nativewind-utils';
 
-type IAnimatedPressableProps = React.ComponentProps<typeof Pressable> &
-  MotionComponentProps<typeof Pressable, ViewStyle, unknown, unknown, unknown>;
-
-const AnimatedPressable = createMotionAnimatedComponent(
-  Pressable
-) as React.ComponentType<IAnimatedPressableProps>;
-const SCOPE = 'MODAL';
-
-type IMotionViewProps = React.ComponentProps<typeof View> &
-  MotionComponentProps<typeof View, ViewStyle, unknown, unknown, unknown>;
-
-const MotionView = Motion.View as React.ComponentType<IMotionViewProps>;
-
-const UIModal = createModal({
-  Root: withStyleContext(View, SCOPE),
-  Backdrop: AnimatedPressable,
-  Content: MotionView,
-  Body: ScrollView,
-  CloseButton: Pressable,
-  Footer: View,
-  Header: View,
-  AnimatePresence: AnimatePresence,
-});
-
-cssInterop(AnimatedPressable, { className: 'style' });
-cssInterop(MotionView, { className: 'style' });
-
+// ============ ESTILOS ============
 const modalStyle = tva({
-  base: 'group/modal w-full h-full justify-center items-center web:pointer-events-none',
+  base: 'flex-1 justify-center items-center',
   variants: {
     size: {
       xs: '',
@@ -57,12 +30,12 @@ const modalStyle = tva({
 });
 
 const modalBackdropStyle = tva({
-  base: 'absolute left-0 top-0 right-0 bottom-0 bg-background-dark web:cursor-default',
+  base: 'absolute left-0 top-0 right-0 bottom-0 bg-black/50',
 });
 
 const modalContentStyle = tva({
-  base: 'bg-background-0 rounded-md overflow-hidden border border-outline-100 shadow-hard-2 p-6',
-  parentVariants: {
+  base: 'bg-background-0 rounded-md overflow-hidden border border-outline-100 p-6',
+  variants: {
     size: {
       xs: 'w-[60%] max-w-[360px]',
       sm: 'w-[70%] max-w-[420px]',
@@ -78,7 +51,7 @@ const modalBodyStyle = tva({
 });
 
 const modalCloseButtonStyle = tva({
-  base: 'group/modal-close-button z-10 rounded data-[focus-visible=true]:web:bg-background-100 web:outline-0 cursor-pointer',
+  base: 'z-10 rounded cursor-pointer',
 });
 
 const modalHeaderStyle = tva({
@@ -89,174 +62,168 @@ const modalFooterStyle = tva({
   base: 'flex-row justify-end items-center gap-2',
 });
 
-type IModalProps = React.ComponentProps<typeof UIModal> &
-  VariantProps<typeof modalStyle> & { className?: string };
+// ============ TIPOS ============
+type ModalSize = 'xs' | 'sm' | 'md' | 'lg' | 'full';
 
-type IModalBackdropProps = React.ComponentProps<typeof UIModal.Backdrop> &
-  VariantProps<typeof modalBackdropStyle> & { className?: string };
+interface ModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  size?: ModalSize;
+  children: React.ReactNode;
+  className?: string;
+}
 
-type IModalContentProps = React.ComponentProps<typeof UIModal.Content> &
-  VariantProps<typeof modalContentStyle> & { className?: string };
+interface ModalBackdropProps {
+  className?: string;
+  onPress?: () => void;
+}
 
-type IModalHeaderProps = React.ComponentProps<typeof UIModal.Header> &
-  VariantProps<typeof modalHeaderStyle> & { className?: string };
+interface ModalContentProps {
+  children: React.ReactNode;
+  className?: string;
+  size?: ModalSize;
+}
 
-type IModalBodyProps = React.ComponentProps<typeof UIModal.Body> &
-  VariantProps<typeof modalBodyStyle> & { className?: string };
+interface ModalHeaderProps {
+  children: React.ReactNode;
+  className?: string;
+}
 
-type IModalFooterProps = React.ComponentProps<typeof UIModal.Footer> &
-  VariantProps<typeof modalFooterStyle> & { className?: string };
+interface ModalBodyProps {
+  children: React.ReactNode;
+  className?: string;
+}
 
-type IModalCloseButtonProps = React.ComponentProps<typeof UIModal.CloseButton> &
-  VariantProps<typeof modalCloseButtonStyle> & { className?: string };
+interface ModalFooterProps {
+  children: React.ReactNode;
+  className?: string;
+}
 
-const Modal = React.forwardRef<React.ComponentRef<typeof UIModal>, IModalProps>(
-  ({ className, size = 'md', ...props }, ref) => (
-    <UIModal
-      ref={ref}
-      {...props}
-      pointerEvents="box-none"
-      className={modalStyle({ size, class: className })}
-      context={{ size }}
-    />
-  )
-);
+interface ModalCloseButtonProps {
+  children?: React.ReactNode;
+  className?: string;
+  onPress?: () => void;
+}
 
-const ModalBackdrop = React.forwardRef<
-  React.ComponentRef<typeof UIModal.Backdrop>,
-  IModalBackdropProps
->(function ModalBackdrop({ className, ...props }, ref) {
-  return (
-    <UIModal.Backdrop
-      ref={ref}
-      initial={{
-        opacity: 0,
-      }}
-      animate={{
-        opacity: 0.5,
-      }}
-      exit={{
-        opacity: 0,
-      }}
-      transition={{
-        type: 'spring',
-        damping: 18,
-        stiffness: 250,
-        opacity: {
-          type: 'timing',
-          duration: 250,
-        },
-      }}
-      {...props}
-      className={modalBackdropStyle({
-        class: className,
-      })}
-    />
-  );
+// ============ CONTEXTO ============
+const ModalContext = React.createContext<{
+  onClose: () => void;
+  size: ModalSize;
+}>({
+  onClose: () => {},
+  size: 'md',
 });
 
-const ModalContent = React.forwardRef<
-  React.ComponentRef<typeof UIModal.Content>,
-  IModalContentProps
->(function ModalContent({ className, size, ...props }, ref) {
-  const { size: parentSize } = useStyleContext(SCOPE);
+// ============ COMPONENTES ============
 
+const Modal = ({ 
+  isOpen, 
+  onClose, 
+  size = 'md', 
+  children, 
+  className 
+}: ModalProps) => {
   return (
-    <UIModal.Content
-      ref={ref}
-      initial={{
-        opacity: 0,
-        scale: 0.9,
-      }}
-      animate={{
-        opacity: 1,
-        scale: 1,
-      }}
-      exit={{
-        opacity: 0,
-      }}
-      transition={{
-        type: 'spring',
-        damping: 18,
-        stiffness: 250,
-        opacity: {
-          type: 'timing',
-          duration: 250,
-        },
-      }}
-      {...props}
-      className={modalContentStyle({
-        parentVariants: {
-          size: parentSize,
-        },
-        size,
-        class: className,
-      })}
-      pointerEvents="auto"
+    <RNModal
+      visible={isOpen}
+      transparent
+      animationType="fade"  // Animación nativa de RN, NO de @legendapp/motion
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <ModalContext.Provider value={{ onClose, size }}>
+        <View 
+          style={styles.modalContainer}
+          className={modalStyle({ size, class: className })}
+        >
+          {children}
+        </View>
+      </ModalContext.Provider>
+    </RNModal>
+  );
+};
+
+const ModalBackdrop = ({ className, onPress }: ModalBackdropProps) => {
+  const { onClose } = React.useContext(ModalContext);
+  
+  return (
+    <Pressable
+      style={StyleSheet.absoluteFill}
+      className={modalBackdropStyle({ class: className })}
+      onPress={onPress ?? onClose}
     />
   );
-});
+};
 
-const ModalHeader = React.forwardRef<
-  React.ComponentRef<typeof UIModal.Header>,
-  IModalHeaderProps
->(function ModalHeader({ className, ...props }, ref) {
+const ModalContent = ({ children, className, size }: ModalContentProps) => {
+  const { size: contextSize } = React.useContext(ModalContext);
+  const finalSize = size ?? contextSize;
+  
   return (
-    <UIModal.Header
-      ref={ref}
-      {...props}
-      className={modalHeaderStyle({
-        class: className,
-      })}
-    />
+    <View 
+      className={modalContentStyle({ size: finalSize, class: className })}
+      style={styles.modalContent}
+    >
+      {children}
+    </View>
   );
-});
+};
 
-const ModalBody = React.forwardRef<
-  React.ComponentRef<typeof UIModal.Body>,
-  IModalBodyProps
->(function ModalBody({ className, ...props }, ref) {
+const ModalHeader = ({ children, className }: ModalHeaderProps) => {
   return (
-    <UIModal.Body
-      ref={ref}
-      {...props}
-      className={modalBodyStyle({
-        class: className,
-      })}
-    />
+    <View className={modalHeaderStyle({ class: className })}>
+      {children}
+    </View>
   );
-});
+};
 
-const ModalFooter = React.forwardRef<
-  React.ComponentRef<typeof UIModal.Footer>,
-  IModalFooterProps
->(function ModalFooter({ className, ...props }, ref) {
+const ModalBody = ({ children, className }: ModalBodyProps) => {
   return (
-    <UIModal.Footer
-      ref={ref}
-      {...props}
-      className={modalFooterStyle({
-        class: className,
-      })}
-    />
+    <ScrollView className={modalBodyStyle({ class: className })}>
+      {children}
+    </ScrollView>
   );
-});
+};
 
-const ModalCloseButton = React.forwardRef<
-  React.ComponentRef<typeof UIModal.CloseButton>,
-  IModalCloseButtonProps
->(function ModalCloseButton({ className, ...props }, ref) {
+const ModalFooter = ({ children, className }: ModalFooterProps) => {
   return (
-    <UIModal.CloseButton
-      ref={ref}
-      {...props}
-      className={modalCloseButtonStyle({
-        class: className,
-      })}
-    />
+    <View className={modalFooterStyle({ class: className })}>
+      {children}
+    </View>
   );
+};
+
+const ModalCloseButton = ({ children, className, onPress }: ModalCloseButtonProps) => {
+  const { onClose } = React.useContext(ModalContext);
+  
+  return (
+    <Pressable
+      className={modalCloseButtonStyle({ class: className })}
+      onPress={onPress ?? onClose}
+      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+    >
+      {children}
+    </Pressable>
+  );
+};
+
+// ============ ESTILOS NATIVOS ============
+const styles = StyleSheet.create({
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
 });
 
+// ============ EXPORTS ============
 Modal.displayName = 'Modal';
 ModalBackdrop.displayName = 'ModalBackdrop';
 ModalContent.displayName = 'ModalContent';

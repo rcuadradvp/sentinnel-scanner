@@ -37,10 +37,8 @@ export function DevicesUnassignedScreen() {
             Sin Asignar
           </Heading>
 
-          {/* 👇 NUEVO: Botón más grande con badge */}
           <Pressable
             onPress={() => {
-              console.log('Opening modal...');
               setIsModalOpen(true);
             }}
             className="bg-primary-500 px-4 py-2 rounded-lg active:opacity-80 flex-row items-center gap-2"
@@ -65,7 +63,6 @@ export function DevicesUnassignedScreen() {
         <AddDeviceModal
           isOpen={isModalOpen}
           onClose={() => {
-            console.log('Closing modal...');
             setIsModalOpen(false);
           }}
           onSuccess={handleAddSuccess}
