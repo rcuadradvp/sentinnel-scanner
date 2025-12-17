@@ -1,8 +1,8 @@
 // components/devices/QRScanner/QRScanner.tsx
-// CORREGIDO PARA EXPO-CAMERA 17.x (SDK 54)
+// ✅ SOLUCIÓN SIMPLE - Solo indicador visual, sin re-mount
 
 import { useState, useEffect } from 'react';
-import { View, StyleSheet, Dimensions, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Dimensions, ActivityIndicator, Pressable } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Text } from '@/components/ui/text';
 import { VStack } from '@/components/ui/vstack';
@@ -21,11 +21,11 @@ interface QRScannerProps {
 }
 
 export function QRScanner({ onScan, isScanning }: QRScannerProps) {
-  // ✅ Los permisos viven SOLO aquí, no en AddDeviceModal
   const [permission, requestPermission] = useCameraPermissions();
   const [hasScanned, setHasScanned] = useState(false);
+  const [showTapIndicator, setShowTapIndicator] = useState(false);
+  const [tapPosition, setTapPosition] = useState({ x: 0, y: 0 });
 
-  // Pedir permisos al montar
   useEffect(() => {
     if (!permission?.granted && permission?.canAskAgain) {
       requestPermission();
@@ -38,7 +38,18 @@ export function QRScanner({ onScan, isScanning }: QRScannerProps) {
     }
   }, [isScanning]);
 
-  // Cargando permisos
+  // ✅ Mostrar indicador visual al tocar
+  const handleTap = (event: any) => {
+    const { locationX, locationY } = event.nativeEvent;
+    setTapPosition({ x: locationX, y: locationY });
+    setShowTapIndicator(true);
+    
+    // Ocultar después de 800ms
+    setTimeout(() => {
+      setShowTapIndicator(false);
+    }, 800);
+  };
+
   if (!permission) {
     return (
       <View style={[styles.container, { height: CAMERA_HEIGHT }]}>
@@ -50,7 +61,6 @@ export function QRScanner({ onScan, isScanning }: QRScannerProps) {
     );
   }
 
-  // Sin permisos
   if (!permission.granted) {
     return (
       <View style={[styles.container, { height: CAMERA_HEIGHT, backgroundColor: '#f3f4f6' }]}>
@@ -64,7 +74,7 @@ export function QRScanner({ onScan, isScanning }: QRScannerProps) {
               Acceso a la cámara
             </Text>
             <Text className="text-center text-typography-600 text-sm">
-              Se necesita acceso a la cámara para escanear códigos QR de los beacons
+              Se necesita acceso a la cámara para escanear códigos QR de los v-tags
             </Text>
           </VStack>
 
@@ -98,8 +108,11 @@ export function QRScanner({ onScan, isScanning }: QRScannerProps) {
   };
 
   return (
-    <View style={[styles.container, { height: CAMERA_HEIGHT }]}>
-      {/* ✅ CORRECCIÓN: CameraView SIN children */}
+    <Pressable 
+      style={[styles.container, { height: CAMERA_HEIGHT }]}
+      onPress={handleTap}
+    >
+      {/* Cámara */}
       <CameraView
         style={StyleSheet.absoluteFill}
         facing="back"
@@ -107,9 +120,10 @@ export function QRScanner({ onScan, isScanning }: QRScannerProps) {
         barcodeScannerSettings={{
           barcodeTypes: ['qr'],
         }}
+        autofocus="on"
       />
       
-      {/* ✅ Overlay con posición absoluta FUERA del CameraView */}
+      {/* Overlay */}
       <View style={styles.overlay} pointerEvents="none">
         <View style={[styles.scanArea, { width: SCAN_AREA_SIZE, height: SCAN_AREA_SIZE }]}>
           <View style={[styles.corner, styles.topLeft]} />
@@ -118,13 +132,29 @@ export function QRScanner({ onScan, isScanning }: QRScannerProps) {
           <View style={[styles.corner, styles.bottomRight]} />
         </View>
         
+        {/* Indicador de tap */}
+        {showTapIndicator && (
+          <View 
+            style={[
+              styles.tapIndicator, 
+              { 
+                left: tapPosition.x - 30, 
+                top: tapPosition.y - 30 
+              }
+            ]}
+          />
+        )}
+        
         <View style={styles.instructionContainer}>
           <Text style={styles.instruction}>
-            Apunta al código QR del beacon
+            Apunta al código QR del v-tag
+          </Text>
+          <Text style={styles.tapHint}>
+            💡 Toca la pantalla si no enfoca bien
           </Text>
         </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -176,10 +206,20 @@ const styles = StyleSheet.create({
     borderBottomWidth: 4,
     borderRightWidth: 4,
   },
+  tapIndicator: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 3,
+    borderColor: '#fff',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
   instructionContainer: {
     position: 'absolute',
     bottom: 40,
     paddingHorizontal: 20,
+    alignItems: 'center',
   },
   instruction: {
     color: '#fff',
@@ -190,5 +230,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 8,
     fontWeight: '500',
+  },
+  tapHint: {
+    color: '#fff',
+    fontSize: 11,
+    textAlign: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 6,
+    marginTop: 6,
+    fontWeight: '400',
   },
 });
