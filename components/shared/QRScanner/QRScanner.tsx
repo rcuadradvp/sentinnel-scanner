@@ -16,15 +16,13 @@ const CAMERA_HEIGHT = 380;
 export interface QRScannerProps {
   onScan: (data: string) => void;
   isScanning: boolean;
-  instructionText?: string;
   tipText?: string;
 }
 
 export function QRScanner({ 
   onScan, 
   isScanning,
-  instructionText = 'Apunta al código QR',
-  tipText = '💡 Toca la pantalla si no enfoca bien',
+  tipText = 'Apunta al código QR',
 }: QRScannerProps) {
   const [permission, requestPermission] = useCameraPermissions();
   const [hasScanned, setHasScanned] = useState(false);
@@ -145,9 +143,6 @@ export function QRScanner({
         )}
         
         <View style={styles.instructionContainer}>
-          <Text style={styles.instruction}>
-            {instructionText}
-          </Text>
           <Text style={styles.tapHint}>
             {tipText}
           </Text>

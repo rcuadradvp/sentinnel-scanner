@@ -1,6 +1,6 @@
 // components/gateways/AddGatewayModal/AddGatewayModal.tsx
 import { useState, useCallback } from 'react';
-import { View, Pressable, StyleSheet, Modal as RNModal } from 'react-native';
+import { View, Pressable, StyleSheet, Modal as RNModal, Image } from 'react-native';
 import {
   Modal,
   ModalBackdrop,
@@ -35,7 +35,7 @@ interface AddGatewayModalProps {
   onSuccess?: (gateway: Gateway) => void;
 }
 
-type Step = 'scanner' | 'manual' | 'form';
+type Step = 'scanner' | 'manual' | 'form' | 'locationInstruction';
 type AlertType = 'invalidQR' | 'invalidMAC' | 'success' | 'locationError' | null;
 
 export function AddGatewayModal({
@@ -49,7 +49,11 @@ export function AddGatewayModal({
   const [scannedMAC, setScannedMAC] = useState<string | null>(null);
   const [scannerKey, setScannerKey] = useState(0);
   const [showMainModal, setShowMainModal] = useState(true);
-  const [pendingAlert, setPendingAlert] = useState<{ type: AlertType; message?: string; gatewayName?: string }>({ type: null });
+  const [pendingAlert, setPendingAlert] = useState<{ 
+    type: AlertType; 
+    message?: string; 
+    gatewayName?: string 
+  }>({ type: null });
 
   // Form state
   const [name, setName] = useState('');
@@ -81,37 +85,44 @@ export function AddGatewayModal({
   }, [clearError, resetScanner]);
 
   const handleClose = useCallback(() => {
-    resetForm();
-    setShowMainModal(true);
-    setPendingAlert({ type: null });
+    // Si hay un alert visible, solo cerrar el alert
+    if (pendingAlert.type !== null) {
+      setPendingAlert({ type: null });
+      setShowMainModal(true);
+      return;
+    }
+    
+    // Si no hay alert, cerrar todo el modal
     onClose();
-  }, [resetForm, onClose]);
-
-  const showAlert = useCallback((type: AlertType, data?: { message?: string; gatewayName?: string }) => {
-    setShowMainModal(false);
     setTimeout(() => {
-      setPendingAlert({
-        type,
-        message: data?.message,
-        gatewayName: data?.gatewayName,
-      });
-    }, 350);
+      resetForm();
+      setShowMainModal(true);
+    }, 300);
+  }, [resetForm, onClose, pendingAlert.type]);
+
+  const showAlert = useCallback((type: AlertType, data?: { 
+    message?: string; 
+    gatewayName?: string 
+  }) => {
+    setShowMainModal(false);
+    setPendingAlert({ type, ...data });
   }, []);
 
-  // ===== HANDLERS =====
+  const handleQRScan = useCallback((data: string) => {
+    const extractedMAC = extractMACFromQR(data);
 
-  const handleQRScan = useCallback((qrData: string) => {
-    const mac = extractMACFromQR(qrData);
-    
-    if (!mac) {
-      showAlert('invalidQR', { message: 'No se pudo extraer la dirección MAC del código QR' });
+    if (!extractedMAC) {
+      showAlert('invalidQR', {
+        message: 'El código QR escaneado no contiene una dirección MAC válida.',
+      });
       return;
     }
 
-    const validation = validateMAC(mac);
-    
+    const validation = validateMAC(extractedMAC);
     if (!validation.valid) {
-      showAlert('invalidMAC', { message: validation.error });
+      showAlert('invalidMAC', {
+        message: validation.error || 'La MAC extraída del QR no es válida.',
+      });
       return;
     }
 
@@ -121,9 +132,10 @@ export function AddGatewayModal({
 
   const handleManualSubmit = useCallback(() => {
     const validation = validateMAC(manualMAC);
-    
     if (!validation.valid) {
-      showAlert('invalidMAC', { message: validation.error });
+      showAlert('invalidMAC', {
+        message: validation.error || 'La MAC ingresada no es válida.',
+      });
       return;
     }
 
@@ -131,71 +143,79 @@ export function AddGatewayModal({
     setStep('form');
   }, [manualMAC, validateMAC, showAlert]);
 
-  const handleFormSubmit = useCallback(async () => {
-    if (!scannedMAC || !name.trim()) return;
+  const handleFormSubmit = useCallback(() => {
+    if (!name.trim()) {
+      return;
+    }
+    // Cambiar al paso de instrucción de ubicación
+    setStep('locationInstruction');
+  }, [name]);
 
-    const gateway = await addGateway({
-      name: name.trim(),
+  const handleLocationConfirm = useCallback(async () => {
+    if (!scannedMAC || !name.trim()) {
+      return;
+    }
+
+    const result = await addGateway({
+      name,
       mac: scannedMAC,
-      description: description.trim() || undefined,
+      description: description || undefined,
       companyId,
     });
 
-    if (gateway) {
-      showAlert('success', { gatewayName: gateway.name });
+    if (result) {
+      showAlert('success', { gatewayName: result.name });
+      onSuccess?.(result);
+    } else if (error) {
+      showAlert('locationError', { message: error });
     }
-  }, [scannedMAC, name, description, companyId, addGateway, showAlert]);
+  }, [scannedMAC, name, description, companyId, addGateway, error, showAlert, onSuccess]);
 
   const handleCancel = useCallback(() => {
-    setScannedMAC(null);
-    setStep('scanner');
-    setName('');
-    setDescription('');
-    clearError();
-    resetScanner();
-  }, [clearError, resetScanner]);
-
-  // ===== ALERT HANDLERS =====
+    if (step === 'manual') {
+      setStep('scanner');
+      setManualMAC('');
+    } else if (step === 'form') {
+      setStep('scanner');
+      setScannedMAC(null);
+      setName('');
+      setDescription('');
+    } else if (step === 'locationInstruction') {
+      setStep('form');
+    } else {
+      handleClose();
+    }
+  }, [step, handleClose]);
 
   const handleInvalidQRClose = useCallback(() => {
     setPendingAlert({ type: null });
-    setTimeout(() => {
-      setShowMainModal(true);
-      resetScanner();
-    }, 300);
+    setShowMainModal(true);
+    resetScanner();
   }, [resetScanner]);
 
-  const handleInvalidMACRetry = useCallback(() => {
+  const handleInvalidMACClose = useCallback(() => {
     setPendingAlert({ type: null });
-    setTimeout(() => {
-      setShowMainModal(true);
-      resetScanner();
-    }, 300);
-  }, [resetScanner]);
-
-  const handleInvalidMACManual = useCallback(() => {
+    setShowMainModal(true);
+    setManualMAC('');
     setStep('manual');
-    setPendingAlert({ type: null });
-    setTimeout(() => {
-      setShowMainModal(true);
-    }, 300);
   }, []);
-
-  const handleSuccessAddAnother = useCallback(() => {
-    setPendingAlert({ type: null });
-    resetForm();
-    setTimeout(() => {
-      setShowMainModal(true);
-    }, 300);
-  }, [resetForm]);
 
   const handleSuccessClose = useCallback(() => {
     setPendingAlert({ type: null });
+    // Primero cerrar el modal padre
+    onClose();
+    // Después resetear todo (esto se ejecutará después de que el modal se cierre)
     setTimeout(() => {
-      onClose();
-      onSuccess?.(null as any);
+      resetForm();
+      setShowMainModal(true);
     }, 300);
-  }, [onClose, onSuccess]);
+  }, [resetForm, onClose]);
+
+  const handleLocationErrorClose = useCallback(() => {
+    setPendingAlert({ type: null });
+    setShowMainModal(true);
+    setStep('form');
+  }, []);
 
   return (
     <>
@@ -209,6 +229,7 @@ export function AddGatewayModal({
               {step === 'scanner' && 'Escanear V-gate'}
               {step === 'manual' && 'Ingresar MAC'}
               {step === 'form' && 'Nuevo V-gate'}
+              {step === 'locationInstruction' && 'Configurar ubicación'}
             </Heading>
             <ModalCloseButton onPress={handleClose}>
               <Icon as={SquareX} size="sm" />
@@ -223,7 +244,6 @@ export function AddGatewayModal({
                   key={scannerKey}
                   onScan={handleQRScan}
                   isScanning={!isLoading}
-                  instructionText="Apunta al código QR del V-gate"
                 />
                 
                 <View className="mt-4">
@@ -241,22 +261,19 @@ export function AddGatewayModal({
 
             {/* Manual MAC Step */}
             {step === 'manual' && (
-              <VStack className="p-4 gap-4">
-                <VStack className="gap-2">
-                  <Text className="text-typography-700 font-medium">Dirección MAC</Text>
-                  <Input variant="outline" size="md">
-                    <InputField
-                      placeholder="Ej: AC233FC1D00C"
-                      value={manualMAC}
-                      onChangeText={setManualMAC}
-                      autoCapitalize="characters"
-                      autoCorrect={false}
-                    />
-                  </Input>
-                  <Text className="text-typography-500 text-xs">
-                    Ingresa la MAC del V-gate (12 caracteres)
-                  </Text>
-                </VStack>
+              <VStack className="gap-4 p-4">
+                <Text className="text-typography-600 text-sm">
+                  Ingresa la dirección MAC del V-gate en formato: AA:BB:CC:DD:EE:FF
+                </Text>
+
+                <Input variant="outline" size="md">
+                  <InputField
+                    placeholder="Ej: A1:B2:C3:D4:E5:F6"
+                    value={manualMAC}
+                    onChangeText={setManualMAC}
+                    autoCapitalize="characters"
+                  />
+                </Input>
 
                 <HStack className="gap-3 mt-2">
                   <Button
@@ -264,15 +281,16 @@ export function AddGatewayModal({
                     action="secondary"
                     className="flex-1"
                     onPress={handleCancel}
+                    disabled={isLoading}
                   >
-                    <ButtonText>Cancelar</ButtonText>
+                    <ButtonText>Volver</ButtonText>
                   </Button>
                   <Button
                     variant="solid"
                     action="primary"
                     className="flex-1"
                     onPress={handleManualSubmit}
-                    disabled={manualMAC.length < 12}
+                    disabled={!manualMAC.trim() || isLoading}
                   >
                     <ButtonText>Continuar</ButtonText>
                   </Button>
@@ -281,15 +299,17 @@ export function AddGatewayModal({
             )}
 
             {/* Form Step */}
-            {step === 'form' && scannedMAC && (
-              <VStack className="p-4 gap-4">
+            {step === 'form' && (
+              <VStack className="gap-4 p-4">
                 {/* MAC (readonly) */}
-                <VStack className="gap-2">
-                  <Text className="text-typography-700 font-medium">MAC</Text>
-                  <View className="bg-background-100 p-3 rounded-lg">
-                    <Text className="text-typography-600 font-mono">{scannedMAC}</Text>
-                  </View>
-                </VStack>
+                {scannedMAC && (
+                  <VStack className="gap-2">
+                    <Text className="text-typography-700 font-medium">MAC</Text>
+                    <View className="bg-background-100 p-3 rounded-lg">
+                      <Text className="text-typography-600 font-mono">{scannedMAC}</Text>
+                    </View>
+                  </VStack>
+                )}
 
                 {/* Empresa (readonly) */}
                 <VStack className="gap-2">
@@ -323,14 +343,6 @@ export function AddGatewayModal({
                   </Input>
                 </VStack>
 
-                {/* Ubicación indicator */}
-                <HStack className="items-center gap-2 bg-info-50 p-3 rounded-lg">
-                  <Icon as={MapPin} size="sm" className="text-info-600" />
-                  <Text className="text-info-700 text-sm flex-1">
-                    La ubicación se obtendrá automáticamente al guardar
-                  </Text>
-                </HStack>
-
                 {/* Error */}
                 {error && (
                   <HStack className="items-start gap-2 bg-error-50 p-3 rounded-lg">
@@ -357,12 +369,47 @@ export function AddGatewayModal({
                     onPress={handleFormSubmit}
                     disabled={!name.trim() || isLoading}
                   >
-                    {(isLoading || isGettingLocation) && <ButtonSpinner className="mr-2" />}
-                    <ButtonText>
-                      {isGettingLocation ? 'Obteniendo ubicación...' : 'Guardar'}
-                    </ButtonText>
+                    <ButtonText>Guardar</ButtonText>
                   </Button>
                 </HStack>
+              </VStack>
+            )}
+
+            {/* Location Instruction Step - NUEVA PANTALLA */}
+            {step === 'locationInstruction' && (
+              <VStack className="gap-6 p-6 items-center">
+                {/* Imagen de instrucciones */}
+                <View className="w-full aspect-square max-w-[300px] rounded-xl overflow-hidden">
+                  <Image
+                    source={require('@/assets/configGateways.png')}
+                    className="w-full h-full"
+                    resizeMode="contain"
+                  />
+                </View>
+
+                {/* Texto de instrucciones */}
+                <VStack className="gap-3 items-center">
+                  <Heading size="lg" className="text-center text-typography-900">
+                    Posicionamiento requerido
+                  </Heading>
+                  <Text className="text-center text-typography-600 text-base leading-relaxed">
+                    Procura estar abajo del v-gate para configurar la ubicación precisa de este
+                  </Text>
+                </VStack>
+
+                {/* Botón Aceptar */}
+                <Button
+                  variant="solid"
+                  action="primary"
+                  className="w-full"
+                  onPress={handleLocationConfirm}
+                  disabled={isGettingLocation}
+                >
+                  {isGettingLocation && <ButtonSpinner className="mr-2" />}
+                  <ButtonText>
+                    {isGettingLocation ? 'Obteniendo ubicación...' : 'Aceptar'}
+                  </ButtonText>
+                </Button>
               </VStack>
             )}
           </ModalBody>
@@ -393,8 +440,8 @@ export function AddGatewayModal({
               {pendingAlert.message}
             </Text>
             
-            <Button variant="solid" action="primary" onPress={handleInvalidQRClose} className="w-full">
-              <ButtonText>Intentar de nuevo</ButtonText>
+            <Button variant="solid" action="primary" onPress={handleInvalidQRClose}>
+              <ButtonText>Entendido</ButtonText>
             </Button>
           </View>
         </View>
@@ -405,31 +452,55 @@ export function AddGatewayModal({
         visible={pendingAlert.type === 'invalidMAC'}
         transparent
         animationType="fade"
-        onRequestClose={handleInvalidMACRetry}
+        onRequestClose={handleInvalidMACClose}
       >
         <View style={styles.alertContainer}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={handleInvalidMACRetry}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={handleInvalidMACClose}>
             <View style={styles.backdrop} />
           </Pressable>
           
           <View style={styles.alertContent} className="bg-background-0 rounded-xl p-6 w-[90%] max-w-md">
             <HStack className="items-center gap-3 mb-4">
-              <Icon as={AlertCircle} size="xl" className="text-warning-500" />
-              <Heading size="lg" className="text-typography-900">V-gate no válido</Heading>
+              <Icon as={AlertCircle} size="xl" className="text-error-500" />
+              <Heading size="lg" className="text-typography-900">MAC inválida</Heading>
             </HStack>
             
             <Text className="text-typography-700 text-base mb-6">
               {pendingAlert.message}
             </Text>
             
-            <VStack className="gap-3">
-              <Button variant="solid" action="primary" onPress={handleInvalidMACRetry} className="w-full">
-                <ButtonText>Escanear otro</ButtonText>
-              </Button>
-              <Button variant="outline" action="secondary" onPress={handleInvalidMACManual} className="w-full">
-                <ButtonText>Ingresar MAC manual</ButtonText>
-              </Button>
-            </VStack>
+            <Button variant="solid" action="primary" onPress={handleInvalidMACClose}>
+              <ButtonText>Reintentar</ButtonText>
+            </Button>
+          </View>
+        </View>
+      </RNModal>
+
+      {/* Alert: Error de ubicación */}
+      <RNModal
+        visible={pendingAlert.type === 'locationError'}
+        transparent
+        animationType="fade"
+        onRequestClose={handleLocationErrorClose}
+      >
+        <View style={styles.alertContainer}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={handleLocationErrorClose}>
+            <View style={styles.backdrop} />
+          </Pressable>
+          
+          <View style={styles.alertContent} className="bg-background-0 rounded-xl p-6 w-[90%] max-w-md">
+            <HStack className="items-center gap-3 mb-4">
+              <Icon as={MapPin} size="xl" className="text-error-500" />
+              <Heading size="lg" className="text-typography-900">Error de ubicación</Heading>
+            </HStack>
+            
+            <Text className="text-typography-700 text-base mb-6">
+              {pendingAlert.message}
+            </Text>
+            
+            <Button variant="solid" action="primary" onPress={handleLocationErrorClose}>
+              <ButtonText>Reintentar</ButtonText>
+            </Button>
           </View>
         </View>
       </RNModal>
@@ -449,21 +520,16 @@ export function AddGatewayModal({
           <View style={styles.alertContent} className="bg-background-0 rounded-xl p-6 w-[90%] max-w-md">
             <HStack className="items-center gap-3 mb-4">
               <Icon as={CheckCircle2} size="xl" className="text-success-500" />
-              <Heading size="lg" className="text-typography-900">¡V-gate agregado!</Heading>
+              <Heading size="lg" className="text-typography-900">¡Listo!</Heading>
             </HStack>
             
             <Text className="text-typography-700 text-base mb-6">
-              El V-gate "{pendingAlert.gatewayName}" fue registrado exitosamente.
+              El V-gate "{pendingAlert.gatewayName}" se ha registrado correctamente.
             </Text>
             
-            <VStack className="gap-3">
-              <Button variant="solid" action="primary" onPress={handleSuccessAddAnother} className="w-full">
-                <ButtonText>Agregar otro</ButtonText>
-              </Button>
-              <Button variant="outline" action="secondary" onPress={handleSuccessClose} className="w-full">
-                <ButtonText>Cerrar</ButtonText>
-              </Button>
-            </VStack>
+            <Button variant="solid" action="primary" onPress={handleSuccessClose}>
+              <ButtonText>Aceptar</ButtonText>
+            </Button>
           </View>
         </View>
       </RNModal>
@@ -478,14 +544,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   alertContent: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+    zIndex: 10,
   },
 });

@@ -1,212 +1,219 @@
 // components/devices/AddDeviceModal/AddDeviceModal.tsx
-// ✅ SOLUCIÓN REAL - Cierra el modal principal antes de mostrar alert
-
-import { useState, useEffect, useCallback } from 'react';
-import { View, Pressable, Modal as RNModal, StyleSheet } from 'react-native';
+import { useState, useCallback } from 'react';
+import { View, Pressable, StyleSheet, Modal as RNModal } from 'react-native';
 import {
   Modal,
   ModalBackdrop,
   ModalContent,
   ModalHeader,
-  ModalCloseButton,
   ModalBody,
+  ModalCloseButton,
 } from '@/components/ui/modal';
-import { Heading } from '@/components/ui/heading';
-import { Text } from '@/components/ui/text';
-import { Icon } from '@/components/ui/icon';
-import { Button, ButtonText } from '@/components/ui/button';
-import { SquareX , AlertCircle, CheckCircle } from 'lucide-react-native';
 import { VStack } from '@/components/ui/vstack';
 import { HStack } from '@/components/ui/hstack';
-import { QRScanner } from '@/components/devices/QRScanner';
-import { DeviceForm } from '@/components/devices/DeviceForm';
-import { ManualMACInput } from '@/components/devices/ManualMACInput';
-import { useAddDevice } from '@/hooks';
-import { extractMACFromQR } from '@/utils/mac';
-import type { DevicePriority } from '@/types';
-
-type Step = 'scanner' | 'manual' | 'form';
+import { Text } from '@/components/ui/text';
+import { Heading } from '@/components/ui/heading';
+import { Icon } from '@/components/ui/icon';
+import { Input, InputField } from '@/components/ui/input';
+import { Button, ButtonText } from '@/components/ui/button';
+import { SquareX, AlertCircle, CheckCircle2, CheckCircle, ChevronDown } from 'lucide-react-native';
+import { QRScanner } from '@/components/shared/QRScanner';
+import { useAddDevice } from '@/hooks/useAddDevice';
+import { DEVICE_PRIORITIES, type DevicePriority, type UnassignedDevice } from '@/types';
 
 interface AddDeviceModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess?: () => void;
+  onSuccess?: (device: UnassignedDevice) => void;
 }
 
-export function AddDeviceModal({ isOpen, onClose, onSuccess }: AddDeviceModalProps) {
+type Step = 'scanner' | 'manual' | 'form';
+type AlertType = 'invalidQR' | 'invalidMAC' | 'success' | null;
+
+export function AddDeviceModal({
+  isOpen,
+  onClose,
+  onSuccess,
+}: AddDeviceModalProps) {
   const [step, setStep] = useState<Step>('scanner');
   const [scannedMAC, setScannedMAC] = useState<string | null>(null);
-  const { addDevice, validateMAC, isLoading, error, clearError } = useAddDevice();
-  
-  // ⭐ CLAVE: Estados para controlar visibilidad de modales
-  const [showMainModal, setShowMainModal] = useState(false);
-  const [pendingAlert, setPendingAlert] = useState<{
-    type: 'invalidQR' | 'invalidMAC' | 'success' | null;
-    message?: string;
-    deviceName?: string;
-  }>({ type: null });
-  
-  // KEY para resetear el scanner
   const [scannerKey, setScannerKey] = useState(0);
+  const [showMainModal, setShowMainModal] = useState(true);
+  const [pendingAlert, setPendingAlert] = useState<{ 
+    type: AlertType; 
+    message?: string; 
+    deviceName?: string 
+  }>({ type: null });
 
-  // Sincronizar showMainModal con isOpen
-  useEffect(() => {
-    if (isOpen && !pendingAlert.type) {
-      setShowMainModal(true);
-    } else if (!isOpen) {
-      setShowMainModal(false);
-      const timer = setTimeout(() => {
-        setStep('scanner');
-        setScannedMAC(null);
-        clearError();
-        setScannerKey(prev => prev + 1);
-      }, 300);
-      return () => clearTimeout(timer);
+  // Form state
+  const [name, setName] = useState('');
+  const [priority, setPriority] = useState<DevicePriority>(3); // Media por defecto
+  const [manualMAC, setManualMAC] = useState('');
+  const [showPriorityModal, setShowPriorityModal] = useState(false);
+
+  const {
+    isLoading,
+    error,
+    addDevice,
+    validateMAC,
+    clearError,
+  } = useAddDevice();
+
+  // Extraer MAC del QR (usando la función del hook de gateways)
+  const extractMACFromQR = useCallback((qrData: string): string | null => {
+    // Intentar varios formatos de QR
+    const patterns = [
+      /mac[:\s]*([0-9A-Fa-f:]{12,17})/i,
+      /([0-9A-Fa-f]{12})/,
+      /([0-9A-Fa-f:]{17})/,
+    ];
+
+    for (const pattern of patterns) {
+      const match = qrData.match(pattern);
+      if (match) {
+        return match[1];
+      }
     }
-  }, [isOpen, pendingAlert.type, clearError]);
 
-  const handleClose = useCallback(() => {
-    setShowMainModal(false);
-    setTimeout(() => onClose(), 300);
-  }, [onClose]);
+    return null;
+  }, []);
 
   const resetScanner = useCallback(() => {
     setScannerKey(prev => prev + 1);
   }, []);
 
-  // ⭐ Muestra alert DESPUÉS de cerrar el modal principal
-  const showAlert = useCallback((type: 'invalidQR' | 'invalidMAC' | 'success', data?: any) => {
-    // 1. Cerrar modal principal
-    setShowMainModal(false);
-    
-    // 2. Esperar animación de cierre
-    setTimeout(() => {
-      // 3. Mostrar alert
-      setPendingAlert({
-        type,
-        message: data?.message,
-        deviceName: data?.deviceName,
-      });
-    }, 350);
-  }, []);
-
-  const handleQRScan = useCallback(async (qrData: string) => {
-    console.log('[AddDeviceModal] QR escaneado:', qrData);
-    const mac = extractMACFromQR(qrData);
-    
-    if (!mac) {
-      showAlert('invalidQR', { 
-        message: 'No se pudo extraer la dirección MAC del código QR' 
-      });
-      return;
-    }
-
-    const validation = await validateMAC(mac);
-    
-    if (!validation.valid) {
-      showAlert('invalidMAC', { 
-        message: validation.error || 'Este v-tag no es compatible' 
-      });
-      return;
-    }
-
-    setScannedMAC(validation.formatted || mac);
-    setStep('form');
-  }, [validateMAC, showAlert]);
-
-  const handleManualSubmit = useCallback(async (mac: string) => {
-    const validation = await validateMAC(mac);
-    
-    if (!validation.valid) {
-      return;
-    }
-
-    setScannedMAC(validation.formatted || mac);
-    setStep('form');
-  }, [validateMAC]);
-
-  const handleFormSubmit = useCallback(async (data: { name: string; priority: DevicePriority }) => {
-    if (!scannedMAC) return;
-
-    const device = await addDevice({
-      name: data.name,
-      mac: scannedMAC,
-      priority: data.priority,
-    });
-
-    if (device) {
-      showAlert('success', { deviceName: device.name });
-    }
-  }, [scannedMAC, addDevice, showAlert]);
-
-  const handleCancel = useCallback(() => {
-    setScannedMAC(null);
+  const resetForm = useCallback(() => {
     setStep('scanner');
+    setScannedMAC(null);
+    setName('');
+    setPriority(3);
+    setManualMAC('');
     clearError();
     resetScanner();
   }, [clearError, resetScanner]);
 
-  // ===== HANDLERS DE ALERTS =====
-  
-  const handleInvalidQRClose = useCallback(() => {
-    setPendingAlert({ type: null });
-    // Reabrir modal y resetear scanner
-    setTimeout(() => {
+  const handleClose = useCallback(() => {
+    if (pendingAlert.type !== null) {
+      setPendingAlert({ type: null });
       setShowMainModal(true);
-      resetScanner();
+      return;
+    }
+    
+    onClose();
+    setTimeout(() => {
+      resetForm();
+      setShowMainModal(true);
     }, 300);
-  }, [resetScanner]);
+  }, [resetForm, onClose, pendingAlert.type]);
 
-  const handleInvalidMACRetry = useCallback(() => {
-    setPendingAlert({ type: null });
-    setTimeout(() => {
-      setShowMainModal(true);
-      resetScanner();
-    }, 300);
-  }, [resetScanner]);
-
-  const handleInvalidMACManual = useCallback(() => {
-    // ⭐ IMPORTANTE: Cambiar step ANTES de cerrar el alert
-    setStep('manual');
-    setPendingAlert({ type: null });
-    setTimeout(() => {
-      setShowMainModal(true);
-    }, 300);
+  const showAlert = useCallback((type: AlertType, data?: { 
+    message?: string; 
+    deviceName?: string 
+  }) => {
+    setShowMainModal(false);
+    setPendingAlert({ type, ...data });
   }, []);
 
-  const handleSuccessAddAnother = useCallback(() => {
+  const handleQRScan = useCallback(async (data: string) => {
+    const extractedMAC = extractMACFromQR(data);
+
+    if (!extractedMAC) {
+      showAlert('invalidQR', {
+        message: 'El código QR escaneado no contiene una dirección MAC válida.',
+      });
+      return;
+    }
+
+    const validation = await validateMAC(extractedMAC);
+    if (!validation.valid) {
+      showAlert('invalidMAC', {
+        message: 'Este dispositivo no es un V-tag válido.',
+      });
+      return;
+    }
+
+    setScannedMAC(validation.formatted!);
+    setStep('form');
+  }, [extractMACFromQR, validateMAC, showAlert]);
+
+  const handleManualSubmit = useCallback(async () => {
+    const validation = await validateMAC(manualMAC);
+    if (!validation.valid) {
+      showAlert('invalidMAC', {
+        message: 'Este dispositivo no es un V-tag válido.',
+      });
+      return;
+    }
+
+    setScannedMAC(validation.formatted!);
+    setStep('form');
+  }, [manualMAC, validateMAC, showAlert]);
+
+  const handleFormSubmit = useCallback(async () => {
+    if (!scannedMAC || !name.trim()) {
+      return;
+    }
+
+    const result = await addDevice({
+      name: name.trim(),
+      mac: scannedMAC,
+      priority,
+    });
+
+    if (result) {
+      showAlert('success', { deviceName: result.name });
+      onSuccess?.(result);
+    }
+  }, [scannedMAC, name, priority, addDevice, showAlert, onSuccess]);
+
+  const handleCancel = useCallback(() => {
+    if (step === 'manual') {
+      setStep('scanner');
+      setManualMAC('');
+    } else if (step === 'form') {
+      setStep('scanner');
+      setScannedMAC(null);
+      setName('');
+      setPriority(3);
+    } else {
+      handleClose();
+    }
+  }, [step, handleClose]);
+
+  const handleInvalidQRClose = useCallback(() => {
     setPendingAlert({ type: null });
-    setScannedMAC(null);
-    setStep('scanner');
-    clearError();
-    setTimeout(() => {
-      setShowMainModal(true);
-      resetScanner();
-    }, 300);
-  }, [clearError, resetScanner]);
+    setShowMainModal(true);
+    resetScanner();
+  }, [resetScanner]);
+
+  const handleInvalidMACClose = useCallback(() => {
+    setPendingAlert({ type: null });
+    setShowMainModal(true);
+    setManualMAC('');
+    setStep('manual');
+  }, []);
 
   const handleSuccessClose = useCallback(() => {
     setPendingAlert({ type: null });
+    onClose();
     setTimeout(() => {
-      onClose();
-      onSuccess?.();
+      resetForm();
+      setShowMainModal(true);
     }, 300);
-  }, [onClose, onSuccess]);
+  }, [resetForm, onClose]);
+
+  const selectedPriority = DEVICE_PRIORITIES.find(p => p.value === priority);
 
   return (
     <>
       {/* ===== MODAL PRINCIPAL ===== */}
-      <Modal
-        isOpen={showMainModal}
-        onClose={handleClose}
-        size="lg"
-      >
+      <Modal isOpen={isOpen && showMainModal} onClose={handleClose} size="lg">
         <ModalBackdrop />
         
         <ModalContent className="max-h-[85%] w-[90%]">
           <ModalHeader className="border-b border-outline-100">
             <Heading size="md">
-              {step === 'scanner' && 'Escanear v-tag'}
+              {step === 'scanner' && 'Escanear V-tag'}
               {step === 'manual' && 'Ingresar MAC'}
               {step === 'form' && 'Nuevo Dispositivo'}
             </Heading>
@@ -216,6 +223,7 @@ export function AddDeviceModal({ isOpen, onClose, onSuccess }: AddDeviceModalPro
           </ModalHeader>
 
           <ModalBody className="p-0">
+            {/* Scanner Step */}
             {step === 'scanner' && (
               <View className="p-4">
                 <QRScanner
@@ -228,7 +236,6 @@ export function AddDeviceModal({ isOpen, onClose, onSuccess }: AddDeviceModalPro
                   <Pressable
                     onPress={() => setStep('manual')}
                     className="active:opacity-50 py-3"
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   >
                     <Text className="text-primary-500 text-center font-medium">
                       O ingresar MAC manualmente
@@ -238,29 +245,166 @@ export function AddDeviceModal({ isOpen, onClose, onSuccess }: AddDeviceModalPro
               </View>
             )}
 
+            {/* Manual MAC Step */}
             {step === 'manual' && (
-              <ManualMACInput
-                onSubmit={handleManualSubmit}
-                onCancel={handleCancel}
-                isValidating={isLoading}
-              />
+              <VStack className="gap-4 p-4">
+                <Text className="text-typography-600 text-sm">
+                  Ingresa la dirección MAC del V-tag en formato: AA:BB:CC:DD:EE:FF
+                </Text>
+
+                <Input variant="outline" size="md">
+                  <InputField
+                    placeholder="Ej: A1:B2:C3:D4:E5:F6"
+                    value={manualMAC}
+                    onChangeText={setManualMAC}
+                    autoCapitalize="characters"
+                  />
+                </Input>
+
+                <HStack className="gap-3 mt-2">
+                  <Button
+                    variant="outline"
+                    action="secondary"
+                    className="flex-1"
+                    onPress={handleCancel}
+                    disabled={isLoading}
+                  >
+                    <ButtonText>Volver</ButtonText>
+                  </Button>
+                  <Button
+                    variant="solid"
+                    action="primary"
+                    className="flex-1"
+                    onPress={handleManualSubmit}
+                    disabled={!manualMAC.trim() || isLoading}
+                  >
+                    <ButtonText>Continuar</ButtonText>
+                  </Button>
+                </HStack>
+              </VStack>
             )}
 
-            {step === 'form' && scannedMAC && (
-              <DeviceForm
-                mac={scannedMAC}
-                onSubmit={handleFormSubmit}
-                onCancel={handleCancel}
-                isLoading={isLoading}
-                error={error}
-              />
+            {/* Form Step */}
+            {step === 'form' && (
+              <VStack className="gap-4 p-4">
+                {/* MAC (readonly) */}
+                {scannedMAC && (
+                  <VStack className="gap-2">
+                    <Text className="text-typography-700 font-medium">MAC</Text>
+                    <View className="bg-background-100 p-3 rounded-lg">
+                      <Text className="text-typography-600 font-mono">{scannedMAC}</Text>
+                    </View>
+                  </VStack>
+                )}
+
+                {/* Nombre */}
+                <VStack className="gap-2">
+                  <Text className="text-typography-700 font-medium">Nombre *</Text>
+                  <Input variant="outline" size="md">
+                    <InputField
+                      placeholder="Ej: Pallet A-01"
+                      value={name}
+                      onChangeText={setName}
+                    />
+                  </Input>
+                </VStack>
+
+                {/* Prioridad */}
+                <VStack className="gap-2">
+                  <Text className="text-typography-700 font-medium">Prioridad</Text>
+                  <Pressable
+                    onPress={() => setShowPriorityModal(true)}
+                    className="bg-background-100 p-3 rounded-lg flex-row items-center justify-between active:bg-background-200"
+                  >
+                    <Text className="text-typography-900">
+                      {selectedPriority?.label || 'Seleccionar'}
+                    </Text>
+                    <Icon as={ChevronDown} size="sm" className="text-typography-500" />
+                  </Pressable>
+                </VStack>
+
+                {/* Error */}
+                {error && (
+                  <HStack className="items-start gap-2 bg-error-50 p-3 rounded-lg">
+                    <Icon as={AlertCircle} size="sm" className="text-error-600 mt-0.5" />
+                    <Text className="text-error-700 text-sm flex-1">{error}</Text>
+                  </HStack>
+                )}
+
+                {/* Buttons */}
+                <HStack className="gap-3 mt-2">
+                  <Button
+                    variant="outline"
+                    action="secondary"
+                    className="flex-1"
+                    onPress={handleCancel}
+                    disabled={isLoading}
+                  >
+                    <ButtonText>Cancelar</ButtonText>
+                  </Button>
+                  <Button
+                    variant="solid"
+                    action="primary"
+                    className="flex-1"
+                    onPress={handleFormSubmit}
+                    disabled={!name.trim() || isLoading}
+                  >
+                    <ButtonText>Guardar</ButtonText>
+                  </Button>
+                </HStack>
+              </VStack>
             )}
           </ModalBody>
         </ModalContent>
       </Modal>
 
-      {/* ===== ALERTS (solo visibles cuando modal principal está cerrado) ===== */}
-      
+      {/* Modal de Prioridad */}
+      <Modal
+        isOpen={showPriorityModal}
+        onClose={() => setShowPriorityModal(false)}
+        size="sm"
+      >
+        <ModalBackdrop />
+        <ModalContent>
+          <ModalHeader>
+            <Heading size="sm">Seleccionar Prioridad</Heading>
+          </ModalHeader>
+          <ModalBody className="p-0">
+            <VStack>
+              {DEVICE_PRIORITIES.map((p) => (
+                <Pressable
+                  key={p.value}
+                  onPress={() => {
+                    setPriority(p.value);
+                    setShowPriorityModal(false);
+                  }}
+                  className={`p-4 border-b border-gray-100 active:bg-gray-50 ${
+                    priority === p.value ? 'bg-primary-50' : ''
+                  }`}
+                >
+                  <HStack className="items-center justify-between">
+                    <Text
+                      className={`${
+                        priority === p.value 
+                          ? 'text-primary-700 font-medium' 
+                          : 'text-typography-900'
+                      }`}
+                    >
+                      {p.label}
+                    </Text>
+                    {priority === p.value && (
+                      <Icon as={CheckCircle} size="sm" className="text-primary-600" />
+                    )}
+                  </HStack>
+                </Pressable>
+              ))}
+            </VStack>
+          </ModalBody>
+        </ModalContent>
+      </Modal>
+
+      {/* ===== ALERTS ===== */}
+
       {/* Alert: QR Inválido */}
       <RNModal
         visible={pendingAlert.type === 'invalidQR'}
@@ -269,10 +413,7 @@ export function AddDeviceModal({ isOpen, onClose, onSuccess }: AddDeviceModalPro
         onRequestClose={handleInvalidQRClose}
       >
         <View style={styles.alertContainer}>
-          <Pressable 
-            style={StyleSheet.absoluteFill} 
-            onPress={handleInvalidQRClose}
-          >
+          <Pressable style={StyleSheet.absoluteFill} onPress={handleInvalidQRClose}>
             <View style={styles.backdrop} />
           </Pressable>
           
@@ -286,61 +427,38 @@ export function AddDeviceModal({ isOpen, onClose, onSuccess }: AddDeviceModalPro
               {pendingAlert.message}
             </Text>
             
-            <Button 
-              variant="solid" 
-              action="primary"
-              onPress={handleInvalidQRClose}
-              className="w-full"
-            >
-              <ButtonText>Intentar de nuevo</ButtonText>
+            <Button variant="solid" action="primary" onPress={handleInvalidQRClose}>
+              <ButtonText>Entendido</ButtonText>
             </Button>
           </View>
         </View>
       </RNModal>
 
-      {/* Alert: v-tag no válido */}
+      {/* Alert: V-tag no válido */}
       <RNModal
         visible={pendingAlert.type === 'invalidMAC'}
         transparent
         animationType="fade"
-        onRequestClose={handleInvalidMACRetry}
+        onRequestClose={handleInvalidMACClose}
       >
         <View style={styles.alertContainer}>
-          <Pressable 
-            style={StyleSheet.absoluteFill} 
-            onPress={handleInvalidMACRetry}
-          >
+          <Pressable style={StyleSheet.absoluteFill} onPress={handleInvalidMACClose}>
             <View style={styles.backdrop} />
           </Pressable>
           
           <View style={styles.alertContent} className="bg-background-0 rounded-xl p-6 w-[90%] max-w-md">
             <HStack className="items-center gap-3 mb-4">
               <Icon as={AlertCircle} size="xl" className="text-error-500" />
-              <Heading size="lg" className="text-typography-900">v-tag no válido</Heading>
+              <Heading size="lg" className="text-typography-900">V-tag no válido</Heading>
             </HStack>
             
             <Text className="text-typography-700 text-base mb-6">
               {pendingAlert.message}
             </Text>
             
-            <VStack className="gap-3">
-              <Button 
-                variant="solid" 
-                action="primary"
-                onPress={handleInvalidMACRetry}
-                className="w-full"
-              >
-                <ButtonText>Intentar de nuevo</ButtonText>
-              </Button>
-              <Button 
-                variant="outline" 
-                action="secondary"
-                onPress={handleInvalidMACManual}
-                className="w-full"
-              >
-                <ButtonText>Ingresar manualmente</ButtonText>
-              </Button>
-            </VStack>
+            <Button variant="solid" action="primary" onPress={handleInvalidMACClose}>
+              <ButtonText>Reintentar</ButtonText>
+            </Button>
           </View>
         </View>
       </RNModal>
@@ -353,41 +471,23 @@ export function AddDeviceModal({ isOpen, onClose, onSuccess }: AddDeviceModalPro
         onRequestClose={handleSuccessClose}
       >
         <View style={styles.alertContainer}>
-          <Pressable 
-            style={StyleSheet.absoluteFill} 
-            onPress={handleSuccessClose}
-          >
+          <Pressable style={StyleSheet.absoluteFill} onPress={handleSuccessClose}>
             <View style={styles.backdrop} />
           </Pressable>
           
           <View style={styles.alertContent} className="bg-background-0 rounded-xl p-6 w-[90%] max-w-md">
             <HStack className="items-center gap-3 mb-4">
-              <Icon as={CheckCircle} size="xl" className="text-success-500" />
-              <Heading size="lg" className="text-typography-900">Dispositivo agregado</Heading>
+              <Icon as={CheckCircle2} size="xl" className="text-success-500" />
+              <Heading size="lg" className="text-typography-900">¡Listo!</Heading>
             </HStack>
             
             <Text className="text-typography-700 text-base mb-6">
-              <Text className="font-semibold">{pendingAlert.deviceName}</Text> se ha agregado correctamente
+              El V-tag "{pendingAlert.deviceName}" se ha registrado correctamente.
             </Text>
             
-            <VStack className="gap-3">
-              <Button 
-                variant="solid" 
-                action="primary"
-                onPress={handleSuccessAddAnother}
-                className="w-full"
-              >
-                <ButtonText>Agregar otro</ButtonText>
-              </Button>
-              <Button 
-                variant="outline" 
-                action="secondary"
-                onPress={handleSuccessClose}
-                className="w-full"
-              >
-                <ButtonText>Cerrar</ButtonText>
-              </Button>
-            </VStack>
+            <Button variant="solid" action="primary" onPress={handleSuccessClose}>
+              <ButtonText>Aceptar</ButtonText>
+            </Button>
           </View>
         </View>
       </RNModal>
@@ -400,17 +500,11 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
   },
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   alertContent: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 20,
+    zIndex: 10,
   },
 });
