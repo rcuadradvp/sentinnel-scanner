@@ -1,9 +1,11 @@
 // screens/scanner/ScannerScreen/ScannerScreen.tsx
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Linking } from 'react-native';
 import { useMinewScanner } from '@/hooks/useMinewScanner';
 import { ScannerHeader } from '@/components/scanner/ScannerHeader';
 import { BeaconList } from '@/components/scanner/BeaconList';
+import { PermissionModal } from '@/components/shared/PermissionModal';
 
 export function ScannerScreen() {
   const {
@@ -14,6 +16,9 @@ export function ScannerScreen() {
     stopScan,
     clearDevices,
   } = useMinewScanner();
+
+  const [showPermissionModal, setShowPermissionModal] = useState(false);
+  const [permissionDenied, setPermissionDenied] = useState(false);
 
   const sortedBeacons = useMemo(() => {
     return [...beacons].sort((a, b) => {
@@ -32,9 +37,15 @@ export function ScannerScreen() {
     if (isScanning) {
       await stopScan();
     } else {
-      await startScan();
+      const success = await startScan();
+      
+      // Si falla, mostrar modal de permisos
+      if (!success && error?.includes('permiso')) {
+        setPermissionDenied(true);
+        setShowPermissionModal(true);
+      }
     }
-  }, [isScanning, startScan, stopScan]);
+  }, [isScanning, startScan, stopScan, error]);
 
   const handleRefresh = useCallback(() => {
     clearDevices();
@@ -42,6 +53,22 @@ export function ScannerScreen() {
       startScan();
     }
   }, [isScanning, startScan, clearDevices]);
+
+  const handlePermissionConfirm = async () => {
+    if (permissionDenied) {
+      // Abrir configuración del sistema
+      await Linking.openSettings();
+    } else {
+      // Intentar iniciar escaneo de nuevo
+      await startScan();
+    }
+    setShowPermissionModal(false);
+  };
+
+  const handlePermissionClose = () => {
+    setShowPermissionModal(false);
+    setPermissionDenied(false);
+  };
 
   return (
     <SafeAreaView className="flex-1 bg-background-50" edges={['top']}>
@@ -56,6 +83,15 @@ export function ScannerScreen() {
         beacons={sortedBeacons}
         isScanning={isScanning}
         onRefresh={handleRefresh}
+      />
+
+      {/* Permission Modal */}
+      <PermissionModal
+        isOpen={showPermissionModal}
+        onClose={handlePermissionClose}
+        onConfirm={handlePermissionConfirm}
+        type="bluetooth"
+        showManualWarning={permissionDenied}
       />
     </SafeAreaView>
   );

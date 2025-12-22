@@ -1,5 +1,6 @@
+// hooks/useMinewScanner.ts
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { AppState, AppStateStatus, Platform, Linking, Alert } from 'react-native';
+import { AppState, AppStateStatus, Platform, Linking } from 'react-native';
 import { 
   minewScanner, 
   MinewBeacon, 
@@ -7,7 +8,7 @@ import {
 } from '@/services/minew-scanner';
 import { BlePermissionsService } from '@/services/ble-permissions';
 import { DeviceService } from '@/services/device';
-import type { BlePermissions, AuthorizedDevicesMap } from '@/types';
+import type { AuthorizedDevicesMap } from '@/types';
 
 interface UseMinewScanner {
   isScanning: boolean;
@@ -37,7 +38,6 @@ export function useMinewScanner(): UseMinewScanner {
     try {
       const devicesMap = await DeviceService.getAuthorizedDevicesMap();
       authorizedDevicesMapRef.current = devicesMap || {};
-      const deviceCount = Object.keys(authorizedDevicesMapRef.current).length;
     } catch (error) {
       console.error('[useMinewScanner] Error loading authorized devices:', error);
       authorizedDevicesMapRef.current = {};
@@ -86,17 +86,9 @@ export function useMinewScanner(): UseMinewScanner {
     if (!perms.allGranted) {
       const currentPerms = await BlePermissionsService.check();
       if (!currentPerms.allGranted) {
-        Alert.alert(
-          'Permisos necesarios',
-          'Para escanear beacons necesitas conceder permisos de Bluetooth y ubicación.',
-          [
-            { text: 'Cancelar', style: 'cancel' },
-            { 
-              text: 'Abrir configuración', 
-              onPress: () => Linking.openSettings() 
-            },
-          ]
-        );
+        // ✅ NO mostrar Alert nativo, retornar false
+        // El componente ScannerScreen mostrará el PermissionModal
+        console.log('[useMinewScanner] Permissions not granted');
         return false;
       }
     }
@@ -113,6 +105,7 @@ export function useMinewScanner(): UseMinewScanner {
       if (!currentPerms.allGranted) {
         const granted = await requestPermissions();
         if (!granted) {
+          setError('Permisos no concedidos');
           return false;
         }
       }
@@ -129,11 +122,7 @@ export function useMinewScanner(): UseMinewScanner {
 
       if (!btState?.isOn) {
         setError('Bluetooth está apagado. Por favor, enciéndelo.');
-        Alert.alert(
-          'Bluetooth apagado',
-          'Necesitas encender el Bluetooth para escanear beacons.',
-          [{ text: 'OK' }]
-        );
+        // ✅ NO mostrar Alert nativo
         return false;
       }
 
@@ -142,7 +131,6 @@ export function useMinewScanner(): UseMinewScanner {
 
       minewScanner.setCallbacks({
         onBeaconFound: (beacon: MinewBeacon) => {
-
           const authorizedName = authorizedDevicesMapRef.current[beacon.mac];
 
           if (!authorizedName) {
@@ -160,7 +148,6 @@ export function useMinewScanner(): UseMinewScanner {
             const updated = Array.from(beaconsMapRef.current.values());
             return updated;
           });
-
         },
         
         onScanStateChanged: (state) => {

@@ -1,3 +1,4 @@
+// services/auth.ts
 import api, { setTokens, clearTokens } from '@/services/api';
 import { AppStorage } from '@/services/storage';
 import { AsyncStorageKeys } from '@/constants/storage';
@@ -52,6 +53,7 @@ export const AuthService = {
           error: 'La empresa no se encuentra activa',
         };
       }
+      
       await setTokens(data.token, data.refreshToken);
       const user = extractUserFromResponse(data);
       await AppStorage.set(AsyncStorageKeys.USER_DATA, user);
@@ -81,7 +83,16 @@ export const AuthService = {
   async logout(): Promise<void> {
     await clearTokens();
     await DeviceService.clearAuthorizedDevices();
+    await AppStorage.remove(AsyncStorageKeys.USER_DATA);
+    await AppStorage.remove(AsyncStorageKeys.SESSION_ACTIVE);
+  },
+
+  async clearAllData(): Promise<void> {
+    await clearTokens();
+    await DeviceService.clearAuthorizedDevices();
     await AppStorage.clearAll();
+    
+    console.log('[Auth] All data cleared including biometric');
   },
 
   async register(data: RegisterData): Promise<AuthResult> {
@@ -140,7 +151,7 @@ export const AuthService = {
 
   async changePassword(data: ChangePasswordData): Promise<AuthResult> {
     try {
-      await api.post<ApiResponse<void>>(Endpoints.AUTH.CHANGE_PASSWORD, data);
+      await api.patch<ApiResponse<void>>(Endpoints.AUTH.CHANGE_PASSWORD, data);
 
       return {
         success: true,
@@ -157,30 +168,12 @@ export const AuthService = {
   },
 
   async hasActiveSession(): Promise<boolean> {
-    try {
-      const sessionActive = await AppStorage.get(AsyncStorageKeys.SESSION_ACTIVE);
-      const userData = await AppStorage.get(AsyncStorageKeys.USER_DATA);
-      
-      return sessionActive === 'true' && !!userData;
-    } catch (error) {
-      console.error('[AuthService] Error checking active session:', error);
-      return false;
-    }
+    const sessionActive = await AppStorage.get(AsyncStorageKeys.SESSION_ACTIVE);
+    return sessionActive === 'true';
   },
 
   async getCurrentUser(): Promise<User | null> {
-    try {
-      const userDataString = await AppStorage.get(AsyncStorageKeys.USER_DATA);
-      
-      if (!userDataString) {
-        return null;
-      }
-
-      const userData: User = JSON.parse(userDataString);
-      return userData;
-    } catch (error) {
-      console.error('[AuthService] Error getting current user:', error);
-      return null;
-    }
+    const userData = await AppStorage.get(AsyncStorageKeys.USER_DATA);
+    return userData ? (JSON.parse(userData) as User) : null;
   },
 };

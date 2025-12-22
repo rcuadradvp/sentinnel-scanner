@@ -5,9 +5,9 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Text } from '@/components/ui/text';
 import { VStack } from '@/components/ui/vstack';
 import { HStack } from '@/components/ui/hstack';
-import { LoadingButton } from '@/components/shared/LoadingButton';
 import { Icon } from '@/components/ui/icon';
 import { Camera, AlertCircle } from 'lucide-react-native';
+import { Button, ButtonText } from '@/components/ui/button';
 
 const { width } = Dimensions.get('window');
 const SCAN_AREA_SIZE = width * 0.55;
@@ -30,12 +30,6 @@ export function QRScanner({
   const [tapPosition, setTapPosition] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
-    if (!permission?.granted && permission?.canAskAgain) {
-      requestPermission();
-    }
-  }, [permission, requestPermission]);
-
-  useEffect(() => {
     if (!isScanning) {
       setHasScanned(false);
     }
@@ -49,6 +43,15 @@ export function QRScanner({
     setTimeout(() => {
       setShowTapIndicator(false);
     }, 800);
+  };
+
+  const handleRequestPermission = async () => {
+    const result = await requestPermission();
+    
+    // Si el usuario deniega los permisos y no puede volver a pedir
+    if (!result.granted && !result.canAskAgain) {
+      console.log('[QRScanner] Permission permanently denied');
+    }
   };
 
   if (!permission) {
@@ -66,9 +69,9 @@ export function QRScanner({
     return (
       <View style={[styles.container, { height: CAMERA_HEIGHT, backgroundColor: '#f3f4f6' }]}>
         <VStack className="items-center gap-4 px-6">
-          <View className="bg-primary-100 p-4 rounded-full">
+          <VStack className="bg-primary-100 p-4 rounded-full">
             <Icon as={Camera} size="xl" className="text-primary-600" />
-          </View>
+          </VStack>
           
           <VStack className="items-center gap-2">
             <Text className="text-center text-typography-900 font-semibold text-lg">
@@ -79,15 +82,14 @@ export function QRScanner({
             </Text>
           </VStack>
 
-          <LoadingButton 
-            onPress={requestPermission} 
-            variant="primary"
-            className="mt-2"
+          <Button 
+            onPress={handleRequestPermission} 
+            className="bg-primary-500 mt-2"
           >
-            Permitir acceso
-          </LoadingButton>
+            <ButtonText>Permitir acceso</ButtonText>
+          </Button>
 
-          {permission.canAskAgain === false && (
+          {!permission.canAskAgain && (
             <HStack className="items-start gap-2 bg-warning-50 p-3 rounded-lg mt-2">
               <Icon as={AlertCircle} size="sm" className="text-warning-600 mt-0.5" />
               <Text className="text-xs text-warning-700 flex-1">
@@ -142,10 +144,8 @@ export function QRScanner({
           />
         )}
         
-        <View style={styles.instructionContainer}>
-          <Text style={styles.tapHint}>
-            {tipText}
-          </Text>
+        <View style={styles.textContainer}>
+          <Text style={styles.tipText}>{tipText}</Text>
         </View>
       </View>
     </Pressable>
@@ -154,51 +154,55 @@ export function QRScanner({
 
 const styles = StyleSheet.create({
   container: {
+    width: '100%',
+    overflow: 'hidden',
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#000',
-    borderRadius: 12,
-    overflow: 'hidden',
-    position: 'relative',
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
   },
   scanArea: {
     position: 'relative',
+    borderWidth: 2,
+    borderColor: 'transparent',
   },
   corner: {
     position: 'absolute',
     width: 30,
     height: 30,
-    borderColor: '#fff',
+    borderColor: '#FFFFFF',
   },
   topLeft: {
-    top: 0,
-    left: 0,
+    top: -2,
+    left: -2,
     borderTopWidth: 4,
     borderLeftWidth: 4,
+    borderTopLeftRadius: 8,
   },
   topRight: {
-    top: 0,
-    right: 0,
+    top: -2,
+    right: -2,
     borderTopWidth: 4,
     borderRightWidth: 4,
+    borderTopRightRadius: 8,
   },
   bottomLeft: {
-    bottom: 0,
-    left: 0,
+    bottom: -2,
+    left: -2,
     borderBottomWidth: 4,
     borderLeftWidth: 4,
+    borderBottomLeftRadius: 8,
   },
   bottomRight: {
-    bottom: 0,
-    right: 0,
+    bottom: -2,
+    right: -2,
     borderBottomWidth: 4,
     borderRightWidth: 4,
+    borderBottomRightRadius: 8,
   },
   tapIndicator: {
     position: 'absolute',
@@ -206,34 +210,20 @@ const styles = StyleSheet.create({
     height: 60,
     borderRadius: 30,
     borderWidth: 3,
-    borderColor: '#fff',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: '#FFFFFF',
+    opacity: 0.6,
   },
-  instructionContainer: {
+  textContainer: {
     position: 'absolute',
-    bottom: 40,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-  },
-  instruction: {
-    color: '#fff',
-    fontSize: 14,
-    textAlign: 'center',
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
+    bottom: 32,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
     borderRadius: 8,
-    fontWeight: '500',
   },
-  tapHint: {
-    color: '#fff',
-    fontSize: 11,
-    textAlign: 'center',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: 6,
-    marginTop: 6,
-    fontWeight: '400',
+  tipText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '500',
   },
 });

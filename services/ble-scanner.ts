@@ -1,3 +1,4 @@
+// services/ble-scanner.ts
 import { BleManager, Device, State, BleError } from 'react-native-ble-plx';
 import { BlePermissionsService } from './ble-permissions';
 import { isMinewBeacon, parseMinewBeacon, b64ToHex } from './minew-parser';
@@ -29,6 +30,7 @@ export class BleScanner {
   private onStateChange: ((status: BleScannerStatus) => void) | null = null;
   private lastReportTime: Map<string, number> = new Map();
   private readonly REPORT_INTERVAL = 5000;
+
   private constructor() {
     this.initializeManager();
     this.loadAuthorizedDevices();
@@ -209,27 +211,30 @@ export class BleScanner {
 
     const manager = this.getManager();
 
-    const permissions = await BlePermissionsService.request();
+    // Verificar permisos
+    const permissions = await BlePermissionsService.check();
     if (!permissions.allGranted) {
       this.handleError('Permisos no concedidos');
       return false;
     }
 
+    // Verificar estado de Bluetooth
     const btState = await manager.state();
     if (btState !== State.PoweredOn) {
       this.handleError('Bluetooth no está disponible');
       return false;
     }
 
+    // Cargar dispositivos autorizados
     await this.loadAuthorizedDevices();
 
     const deviceCount = this.getAuthorizedDevicesCount();
+    console.log(`[BleScanner] Starting scan with ${deviceCount} authorized devices`);
+
     this.devices.clear();
     this.beacons.clear();
     this.lastReportTime.clear();
     this.error = null;
-
-    const minewOnly = options?.minewOnly ?? true;
 
     try {
       this.isScanning = true;
@@ -273,6 +278,22 @@ export class BleScanner {
     this.lastReportTime.clear();
     this.error = null;
     this.lastUpdate = null;
+  }
+
+  /**
+   * Verificar si puede pedir permisos de nuevo (para Android)
+   */
+  async canAskPermissions(): Promise<boolean> {
+    const permissions = await BlePermissionsService.check();
+    return !permissions.allGranted;
+  }
+
+  /**
+   * Solicitar permisos
+   */
+  async requestPermissions(): Promise<boolean> {
+    const permissions = await BlePermissionsService.request();
+    return permissions.allGranted;
   }
 
   destroy(): void {

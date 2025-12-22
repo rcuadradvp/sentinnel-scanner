@@ -127,6 +127,7 @@ export const BiometricService = {
       await AppStorage.set(AsyncStorageKeys.BIOMETRIC_ENABLED, 'true');
       await AppStorage.set(AsyncStorageKeys.BIOMETRIC_DECLINED, 'false');
     
+      console.log('[Biometric] Enabled successfully');
       return true;
     } catch (error) {
       console.error('[Biometric] Error enabling:', error);
@@ -134,16 +135,23 @@ export const BiometricService = {
     }
   },
 
-  async enableWithoutAuth(username: string, password: string): Promise<boolean> {
+  async replaceCredentials(username: string, password: string): Promise<boolean> {
     try {
+      const previousUsername = await SecureStorage.get(SecureStorageKeys.BIOMETRIC_USERNAME);
+      
+      if (previousUsername && previousUsername !== username) {
+        console.log(`[Biometric] Replacing credentials from ${previousUsername} to ${username}`);
+      }
+
       await SecureStorage.set(SecureStorageKeys.BIOMETRIC_USERNAME, username);
       await SecureStorage.set(SecureStorageKeys.BIOMETRIC_PASSWORD, password);
       await AppStorage.set(AsyncStorageKeys.BIOMETRIC_ENABLED, 'true');
       await AppStorage.set(AsyncStorageKeys.BIOMETRIC_DECLINED, 'false');
     
+      console.log('[Biometric] Credentials replaced successfully');
       return true;
     } catch (error) {
-      console.error('[Biometric] Error enabling without auth:', error);
+      console.error('[Biometric] Error replacing credentials:', error);
       return false;
     }
   },
@@ -158,6 +166,7 @@ export const BiometricService = {
         await AppStorage.set(AsyncStorageKeys.BIOMETRIC_DECLINED, 'true');
       }
       
+      console.log(`[Biometric] Disabled (userInitiated: ${userInitiated})`);
       return true;
     } catch {
       return false;
@@ -193,20 +202,20 @@ export const BiometricService = {
     return !!(username && password);
   },
 
-  async updateCredentials(username: string, password: string): Promise<boolean> {
+  async validateStoredUser(currentUsername: string): Promise<boolean> {
     try {
-      const isEnabled = await this.isEnabled();
-      if (!isEnabled) {
-        return false;
-      }
-
-      await SecureStorage.set(SecureStorageKeys.BIOMETRIC_USERNAME, username);
-      await SecureStorage.set(SecureStorageKeys.BIOMETRIC_PASSWORD, password);
-      
-      return true;
-    } catch (error) {
-      console.error('[Biometric] Error updating credentials:', error);
+      const storedUsername = await SecureStorage.get(SecureStorageKeys.BIOMETRIC_USERNAME);
+      return storedUsername === currentUsername;
+    } catch {
       return false;
+    }
+  },
+
+  async getStoredUsername(): Promise<string | null> {
+    try {
+      return await SecureStorage.get(SecureStorageKeys.BIOMETRIC_USERNAME);
+    } catch {
+      return null;
     }
   },
 };

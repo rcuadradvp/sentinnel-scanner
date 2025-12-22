@@ -36,15 +36,15 @@ export function ProfileScreen() {
       setShowEnableBiometricModal(true);
     } else {
       Alert.alert(
-        'Deshabilitar biometría',
-        '¿Estás seguro de que deseas deshabilitar el inicio de sesión con biometría?',
+        'Desactivar biometría',
+        '¿Estás seguro? Tendrás que configurarla nuevamente.',
         [
           { 
             text: 'Cancelar', 
             style: 'cancel' 
           },
           {
-            text: 'Deshabilitar',
+            text: 'Desactivar',
             style: 'destructive',
             onPress: async () => {
               setIsBiometricLoading(true);

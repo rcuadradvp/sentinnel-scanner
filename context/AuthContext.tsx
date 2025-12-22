@@ -30,7 +30,6 @@ interface AuthContextType {
   biometricEnabled: boolean;
   biometricType: string | null;
   biometricDeclined: boolean;
-  // Flag para saber si es un inicio fresco de la app (no después de logout)
   isAppFreshStart: boolean;
   login: (credentials: LoginCredentials) => Promise<boolean>;
   loginWithBiometric: () => Promise<boolean>;
@@ -58,7 +57,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [biometricType, setBiometricType] = useState<string | null>(null);
   const [biometricDeclined, setBiometricDeclined] = useState(false);
-  // Este flag indica si la app acaba de iniciar fresh (true) o si el usuario hizo logout (false)
   const [isAppFreshStart, setIsAppFreshStart] = useState(true);
 
   const appState = useRef(AppState.currentState);
@@ -74,12 +72,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setIsLoading(true);
     try {
       await AuthService.logout();
-      // NO limpiamos biometricDeclined en logout para recordar la preferencia
     } catch (err) {
       console.error('[Auth] Logout error:', err);
     } finally {
       clearAuthState();
-      // Marcar que NO es un inicio fresco - el usuario cerró sesión manualmente
       setIsAppFreshStart(false);
       setIsLoading(false);
     }
@@ -97,7 +93,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const hasCredentials = await BiometricService.hasStoredCredentials();
       setBiometricEnabled(enabled && hasCredentials);
       
-      // Cargar el estado "declined"
       const declined = await BiometricService.isDeclined();
       setBiometricDeclined(declined);
     }
@@ -115,13 +110,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     []
   );
 
-  /**
-   * Habilitar biometría desde el perfil (sin autenticación biométrica previa)
-   * Las credenciales ya fueron validadas al hacer login
-   */
   const enableBiometricFromProfile = useCallback(
     async (username: string, password: string): Promise<boolean> => {
-      const success = await BiometricService.enableWithoutAuth(username, password);
+      const success = await BiometricService.replaceCredentials(username, password);
       if (success) {
         setBiometricEnabled(true);
         setBiometricDeclined(false);
@@ -131,10 +122,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     []
   );
 
-  /**
-   * Deshabilitar biometría
-   * @param userInitiated - Si es true, no se volverá a preguntar al usuario
-   */
   const disableBiometric = useCallback(async (userInitiated: boolean = true) => {
     await BiometricService.disable(userInitiated);
     setBiometricEnabled(false);
@@ -143,18 +130,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, []);
 
-  /**
-   * Usuario rechazó habilitar biometría en el prompt inicial
-   */
   const declineBiometric = useCallback(async () => {
     await BiometricService.setDeclined(true);
     setBiometricDeclined(true);
   }, []);
 
-  /**
-   * Login con biometría - NO deshabilita biometría si el usuario cancela
-   * Solo deshabilita si las credenciales almacenadas son inválidas
-   */
   const loginWithBiometric = useCallback(async (): Promise<boolean> => {
     if (isAuthenticated) {
       return true;
@@ -165,10 +145,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       const credentials = await BiometricService.getCredentials();
 
-      // Si el usuario canceló la autenticación biométrica, simplemente retornar false
-      // NO deshabilitar biometría, NO mostrar error
       if (!credentials) {
-        console.log('[Auth] Biometric cancelled or no credentials');
+        console.log('[Auth] Biometric cancelled by user');
         return false;
       }
 
@@ -182,10 +160,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (result.success && result.user) {
         setUser(result.user);
         setIsAuthenticated(true);
+        
+        if (credentials.username !== result.user.email) {
+          console.warn('[Auth] Stored username does not match logged in user');
+          await BiometricService.disable(false);
+          setBiometricEnabled(false);
+        }
+        
         return true;
       } else {
-        // Las credenciales almacenadas ya no son válidas (usuario cambió contraseña)
-        // Deshabilitar biometría pero NO marcar como declined
         setError('Credenciales inválidas. Por favor ingresa tu contraseña.');
         await BiometricService.disable(false);
         setBiometricEnabled(false);
@@ -212,11 +195,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
           setUser(result.user);
           setIsAuthenticated(true);
 
-          // Solo mostrar el prompt si:
-          // 1. Biometría está disponible
-          // 2. No está habilitada
-          // 3. El usuario NO ha rechazado/deshabilitado previamente
-          if (biometricAvailable && !biometricEnabled && !biometricDeclined) {
+          const storedUsername = await BiometricService.getStoredUsername();
+          
+          if (storedUsername && storedUsername !== credentials.username) {
+            console.log('[Auth] Different user detected, clearing biometric state');
+            await BiometricService.disable(false);
+            setBiometricEnabled(false);
+            setBiometricDeclined(false);
+          }
+
+          const shouldAskBiometric = 
+            biometricAvailable && 
+            !biometricEnabled && 
+            !biometricDeclined && 
+            (!storedUsername || storedUsername !== credentials.username);
+
+          if (shouldAskBiometric) {
             setTimeout(() => {
               Alert.alert(
                 `Habilitar ${biometricType}`,
@@ -225,11 +219,30 @@ export function AuthProvider({ children }: AuthProviderProps) {
                   { 
                     text: 'No, gracias', 
                     style: 'cancel',
-                    onPress: () => declineBiometric()
+                    onPress: async () => {
+                      await BiometricService.setDeclined(true);
+                      setBiometricDeclined(true);
+                      console.log('[Auth] User declined biometric permanently');
+                    }
                   },
                   {
                     text: 'Sí, habilitar',
-                    onPress: () => enableBiometric(credentials.username, credentials.password),
+                    onPress: async () => {
+                      const success = await BiometricService.replaceCredentials(
+                        credentials.username, 
+                        credentials.password
+                      );
+                      if (success) {
+                        setBiometricEnabled(true);
+                        setBiometricDeclined(false);
+                        
+                        Alert.alert(
+                          '¡Listo!',
+                          `${biometricType} habilitado. La próxima vez podrás iniciar sesión más rápido.`,
+                          [{ text: 'OK' }]
+                        );
+                      }
+                    },
                   },
                 ]
               );
@@ -248,7 +261,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setIsLoading(false);
       }
     },
-    [biometricAvailable, biometricEnabled, biometricDeclined, biometricType, enableBiometric, declineBiometric]
+    [biometricAvailable, biometricEnabled, biometricDeclined, biometricType]
   );
 
   const refreshSession = useCallback(async (): Promise<boolean> => {
@@ -283,7 +296,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       const hasSession = await AuthService.hasActiveSession();
       if (!hasSession) {
-        // Es un inicio fresco de la app sin sesión activa
         setIsAppFreshStart(true);
         setIsLoading(false);
         return;
@@ -306,7 +318,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
           setIsAppFreshStart(false);
         }
       } else {
-        // Token expirado - es como un inicio fresco
         setIsAppFreshStart(true);
       }
     } catch (err) {
@@ -345,7 +356,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   useEffect(() => {
     const unsubscribe = onTokenExpired(() => {
-      // Token expirado - limpiar estado pero mantener como fresh start para poder usar biometría
       clearAuthState();
       setIsAppFreshStart(true);
     });
