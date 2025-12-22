@@ -12,6 +12,7 @@ export const AsyncStorageKeys = {
   THEME_MODE: 'theme_mode',
   ONBOARDING_COMPLETED: 'onboarding_completed',
   BIOMETRIC_ENABLED: 'biometric_enabled',
+  BIOMETRIC_DECLINED: 'biometric_declined',
   AUTHORIZED_DEVICES_MAP: 'authorized_devices_map',
   LAST_DEVICE_SYNC: 'last_device_sync',
 } as const;

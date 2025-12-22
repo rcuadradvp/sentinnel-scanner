@@ -1,4 +1,4 @@
-
+// services/biometric.ts
 import * as LocalAuthentication from 'expo-local-authentication';
 import { SecureStorage, AppStorage } from '@/services/storage';
 import { SecureStorageKeys, AsyncStorageKeys } from '@/constants/storage';
@@ -97,9 +97,23 @@ export const BiometricService = {
     return enabled === 'true';
   },
 
+  async isDeclined(): Promise<boolean> {
+    const declined = await AppStorage.get(AsyncStorageKeys.BIOMETRIC_DECLINED);
+    return declined === 'true';
+  },
+
+  async setDeclined(declined: boolean): Promise<boolean> {
+    try {
+      await AppStorage.set(AsyncStorageKeys.BIOMETRIC_DECLINED, declined ? 'true' : 'false');
+      return true;
+    } catch (error) {
+      console.error('[Biometric] Error setting declined:', error);
+      return false;
+    }
+  },
+
   async enable(username: string, password: string): Promise<boolean> {
     try {
-
       const authResult = await this.authenticate(
         'Verifica tu identidad para habilitar inicio rápido'
       );
@@ -111,6 +125,7 @@ export const BiometricService = {
       await SecureStorage.set(SecureStorageKeys.BIOMETRIC_USERNAME, username);
       await SecureStorage.set(SecureStorageKeys.BIOMETRIC_PASSWORD, password);
       await AppStorage.set(AsyncStorageKeys.BIOMETRIC_ENABLED, 'true');
+      await AppStorage.set(AsyncStorageKeys.BIOMETRIC_DECLINED, 'false');
     
       return true;
     } catch (error) {
@@ -119,23 +134,36 @@ export const BiometricService = {
     }
   },
 
-  /**
-   * Deshabilita biometría y elimina credenciales
-   */
-  async disable(): Promise<boolean> {
+  async enableWithoutAuth(username: string, password: string): Promise<boolean> {
+    try {
+      await SecureStorage.set(SecureStorageKeys.BIOMETRIC_USERNAME, username);
+      await SecureStorage.set(SecureStorageKeys.BIOMETRIC_PASSWORD, password);
+      await AppStorage.set(AsyncStorageKeys.BIOMETRIC_ENABLED, 'true');
+      await AppStorage.set(AsyncStorageKeys.BIOMETRIC_DECLINED, 'false');
+    
+      return true;
+    } catch (error) {
+      console.error('[Biometric] Error enabling without auth:', error);
+      return false;
+    }
+  },
+
+  async disable(userInitiated: boolean = false): Promise<boolean> {
     try {
       await SecureStorage.remove(SecureStorageKeys.BIOMETRIC_USERNAME);
       await SecureStorage.remove(SecureStorageKeys.BIOMETRIC_PASSWORD);
       await AppStorage.set(AsyncStorageKeys.BIOMETRIC_ENABLED, 'false');
+      
+      if (userInitiated) {
+        await AppStorage.set(AsyncStorageKeys.BIOMETRIC_DECLINED, 'true');
+      }
+      
       return true;
     } catch {
       return false;
     }
   },
 
-  /**
-   * Obtiene las credenciales después de verificar biometría
-   */
   async getCredentials(): Promise<StoredCredentials | null> {
     try {
       const authResult = await this.authenticate();
@@ -148,7 +176,7 @@ export const BiometricService = {
       const password = await SecureStorage.get(SecureStorageKeys.BIOMETRIC_PASSWORD);
 
       if (!username || !password) {
-        await this.disable();
+        await this.disable(false);
         return null;
       }
 
@@ -163,5 +191,22 @@ export const BiometricService = {
     const username = await SecureStorage.get(SecureStorageKeys.BIOMETRIC_USERNAME);
     const password = await SecureStorage.get(SecureStorageKeys.BIOMETRIC_PASSWORD);
     return !!(username && password);
+  },
+
+  async updateCredentials(username: string, password: string): Promise<boolean> {
+    try {
+      const isEnabled = await this.isEnabled();
+      if (!isEnabled) {
+        return false;
+      }
+
+      await SecureStorage.set(SecureStorageKeys.BIOMETRIC_USERNAME, username);
+      await SecureStorage.set(SecureStorageKeys.BIOMETRIC_PASSWORD, password);
+      
+      return true;
+    } catch (error) {
+      console.error('[Biometric] Error updating credentials:', error);
+      return false;
+    }
   },
 };

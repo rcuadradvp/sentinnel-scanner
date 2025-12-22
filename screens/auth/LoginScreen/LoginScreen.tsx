@@ -1,5 +1,5 @@
 // screens/auth/LoginScreen/LoginScreen.tsx
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/context';
 import { Box } from '@/components/ui/box';
 import { VStack } from '@/components/ui/vstack';
@@ -22,39 +22,46 @@ export function LoginScreen() {
     biometricEnabled,
     biometricType,
     isAuthenticated,
-    shouldPromptBiometric,
-    clearBiometricPrompt,
+    isAppFreshStart,
   } = useAuth();
 
-  const biometricAttempted = useRef(false);
+  const biometricAutoPrompted = useRef(false);
+  const [isBiometricLoading, setIsBiometricLoading] = useState(false);
 
   useEffect(() => {
     if (
       biometricEnabled &&
-      !biometricAttempted.current &&
+      isAppFreshStart &&
+      !biometricAutoPrompted.current &&
       !isAuthenticated &&
-      shouldPromptBiometric
+      !isLoading
     ) {
-      biometricAttempted.current = true;
+      biometricAutoPrompted.current = true;
       handleBiometricLogin();
     }
-  }, [biometricEnabled, isAuthenticated, shouldPromptBiometric]);
+  }, [biometricEnabled, isAppFreshStart, isAuthenticated, isLoading]);
 
   useEffect(() => {
     return () => {
-      biometricAttempted.current = false;
+      biometricAutoPrompted.current = false;
     };
   }, []);
 
   const handleLogin = async (credentials: LoginCredentials) => {
-    clearBiometricPrompt();
     await login(credentials);
   };
 
   const handleBiometricLogin = async () => {
-    const success = await loginWithBiometric();
-    if (!success) {
-      console.log('[Login] Biometric failed, user can enter password');
+    setIsBiometricLoading(true);
+    clearError();
+    
+    try {
+      const success = await loginWithBiometric();
+      if (!success) {
+        console.log('[Login] Biometric failed or cancelled, user can enter password');
+      }
+    } finally {
+      setIsBiometricLoading(false);
     }
   };
 
@@ -77,18 +84,16 @@ export function LoginScreen() {
           onInputChange={handleInputChange}
         />
 
-                {biometricEnabled && (
-
-          
+        {biometricEnabled && (
           <VStack className="gap-6">
-                        <HStack className="items-center gap-4">
+            <HStack className="items-center gap-4">
               <Divider className="flex-1" />
               <Text className="text-typography-500">O Ingresar con</Text>
               <Divider className="flex-1" />
             </HStack>
             <BiometricButton
               onPress={handleBiometricLogin}
-              isLoading={isLoading}
+              isLoading={isLoading || isBiometricLoading}
               biometricType={biometricType || 'Biometría'}
             />
           </VStack>
