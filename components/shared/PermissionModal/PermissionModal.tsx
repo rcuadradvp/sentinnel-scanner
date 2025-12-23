@@ -6,36 +6,93 @@ import { Heading } from '@/components/ui/heading';
 import { Text } from '@/components/ui/text';
 import { Button, ButtonText } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
-import { Bluetooth, MapPin, AlertCircle } from 'lucide-react-native';
+import { 
+  Bluetooth, 
+  MapPin, 
+  AlertCircle, 
+  Fingerprint, 
+  CheckCircle2, 
+  AlertTriangle 
+} from 'lucide-react-native';
 
 interface PermissionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: () => void;
-  type: 'bluetooth' | 'location' | 'camera';
+  onCancel?: () => void; // Para modales con dos acciones
+  type: 'bluetooth' | 'location' | 'camera' | 'biometric-prompt' | 'biometric-success' | 'biometric-disable';
   title?: string;
   description?: string;
+  biometricType?: string; // Ej: "Face ID", "huella digital"
   showManualWarning?: boolean;
 }
 
 const PERMISSION_CONFIG = {
   bluetooth: {
     icon: Bluetooth,
+    iconBgColor: 'bg-primary-100',
+    iconColor: 'text-primary-600',
     title: 'Permisos necesarios',
     description: 'Para escanear beacons necesitas conceder permisos de Bluetooth y ubicación.',
     confirmText: 'Abrir configuración',
+    cancelText: 'Cancelar',
+    showCancel: true,
+    confirmBgColor: 'bg-primary-500',
   },
   location: {
     icon: MapPin,
+    iconBgColor: 'bg-primary-100',
+    iconColor: 'text-primary-600',
     title: 'Permiso de ubicación',
     description: 'Se necesita acceso a la ubicación para localizar dispositivos cercanos.',
     confirmText: 'Permitir acceso',
+    cancelText: 'Cancelar',
+    showCancel: true,
+    confirmBgColor: 'bg-primary-500',
   },
   camera: {
-    icon: MapPin, // Puedes cambiar por Camera si lo importas
+    icon: MapPin,
+    iconBgColor: 'bg-primary-100',
+    iconColor: 'text-primary-600',
     title: 'Acceso a la cámara',
     description: 'Se necesita acceso a la cámara para escanear códigos QR.',
     confirmText: 'Permitir acceso',
+    cancelText: 'Cancelar',
+    showCancel: true,
+    confirmBgColor: 'bg-primary-500',
+  },
+  'biometric-prompt': {
+    icon: Fingerprint,
+    iconBgColor: 'bg-primary-100',
+    iconColor: 'text-primary-600',
+    title: 'Habilitar {biometricType}',
+    description: '¿Deseas usar {biometricType} para iniciar sesión más rápido?',
+    confirmText: 'Sí, habilitar',
+    cancelText: 'No, gracias',
+    showCancel: true,
+    confirmBgColor: 'bg-primary-500',
+  },
+  'biometric-success': {
+    icon: CheckCircle2,
+    iconBgColor: 'bg-success-100',
+    iconColor: 'text-success-600',
+    title: '¡Listo!',
+    description: '{biometricType} habilitado. La próxima vez podrás iniciar sesión más rápido.',
+    confirmText: 'OK',
+    cancelText: '',
+    showCancel: false,
+    confirmBgColor: 'bg-success-500',
+  },
+  'biometric-disable': {
+    icon: AlertTriangle,
+    iconBgColor: 'bg-warning-100',
+    iconColor: 'text-warning-600',
+    title: 'Desactivar biometría',
+    description: '¿Estás seguro? Tendrás que configurarla nuevamente.',
+    confirmText: 'Desactivar',
+    cancelText: 'Cancelar',
+    showCancel: true,
+    confirmBgColor: 'bg-error-500',
   },
 };
 
@@ -43,13 +100,32 @@ export function PermissionModal({
   isOpen,
   onClose,
   onConfirm,
+  onCancel,
   type,
   title,
   description,
+  biometricType = 'Biometría',
   showManualWarning = false,
 }: PermissionModalProps) {
   const config = PERMISSION_CONFIG[type];
   const IconComponent = config.icon;
+
+  // Reemplazar {biometricType} en strings
+  const finalTitle = (title || config.title).replace('{biometricType}', biometricType);
+  const finalDescription = (description || config.description).replace('{biometricType}', biometricType);
+  const confirmBgColor = config.confirmBgColor || 'bg-primary-500';
+
+  const handleCancel = () => {
+    if (onCancel) {
+      onCancel();
+    }
+    onClose();
+  };
+
+  const handleConfirm = () => {
+    onConfirm();
+    onClose();
+  };
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="md">
@@ -57,11 +133,11 @@ export function PermissionModal({
       <ModalContent>
         <ModalHeader className="border-b border-outline-200 pb-4">
           <VStack className="items-center gap-3 w-full">
-            <VStack className="bg-primary-100 p-4 rounded-full">
-              <Icon as={IconComponent} size="xl" className="text-primary-600" />
+            <VStack className={`${config.iconBgColor} p-4 rounded-full`}>
+              <Icon as={IconComponent} size="xl" className={config.iconColor} />
             </VStack>
             <Heading size="lg" className="text-center">
-              {title || config.title}
+              {finalTitle}
             </Heading>
           </VStack>
         </ModalHeader>
@@ -69,7 +145,7 @@ export function PermissionModal({
         <ModalBody className="py-6">
           <VStack className="gap-4">
             <Text className="text-typography-600 text-center">
-              {description || config.description}
+              {finalDescription}
             </Text>
 
             {showManualWarning && (
@@ -84,21 +160,30 @@ export function PermissionModal({
         </ModalBody>
 
         <ModalFooter className="border-t border-outline-200 pt-4">
-          <HStack className="gap-3 w-full">
+          {config.showCancel ? (
+            <HStack className="gap-3 w-full">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onPress={handleCancel}
+              >
+                <ButtonText>{config.cancelText}</ButtonText>
+              </Button>
+              <Button
+                className={`flex-1 ${confirmBgColor}`}
+                onPress={handleConfirm}
+              >
+                <ButtonText>{config.confirmText}</ButtonText>
+              </Button>
+            </HStack>
+          ) : (
             <Button
-              variant="outline"
-              className="flex-1"
-              onPress={onClose}
-            >
-              <ButtonText>Cancelar</ButtonText>
-            </Button>
-            <Button
-              className="flex-1 bg-primary-500"
-              onPress={onConfirm}
+              className={`w-full ${confirmBgColor}`}
+              onPress={handleConfirm}
             >
               <ButtonText>{config.confirmText}</ButtonText>
             </Button>
-          </HStack>
+          )}
         </ModalFooter>
       </ModalContent>
     </Modal>

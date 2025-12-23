@@ -1,4 +1,5 @@
-import { Platform, PermissionsAndroid, Alert, Linking } from 'react-native';
+// services/ble-permissions.ts
+import { Platform, PermissionsAndroid } from 'react-native';
 import type { BlePermissions } from '@/types';
 
 export const BlePermissionsService = {
@@ -14,6 +15,7 @@ export const BlePermissionsService = {
 
   /**
    * Solicita todos los permisos necesarios
+   * NO muestra alerts nativos - retorna el estado de permisos
    */
   async request(): Promise<BlePermissions> {
     if (Platform.OS === 'ios') {
@@ -92,6 +94,7 @@ export const BlePermissionsService = {
 
   /**
    * Android: Solicitar permisos
+   * NO muestra alerts - solo solicita y retorna el resultado
    */
   async requestAndroid(): Promise<BlePermissions> {
     const apiLevel = Platform.Version as number;
@@ -114,9 +117,8 @@ export const BlePermissionsService = {
 
         const allGranted = bluetoothScan && bluetoothConnect && location;
 
-        if (!allGranted) {
-          this.showPermissionDeniedAlert('Bluetooth y ubicación');
-        }
+        // ✅ NO mostrar Alert nativo
+        // El componente que llama a esta función mostrará el PermissionModal
 
         return {
           bluetooth: true,
@@ -126,21 +128,14 @@ export const BlePermissionsService = {
           allGranted,
         };
       } else {
+        // Android 11 y anteriores
         const result = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-          {
-            title: 'Permiso de ubicación',
-            message: 'Se necesita acceso a la ubicación para escanear dispositivos Bluetooth.',
-            buttonPositive: 'Aceptar',
-            buttonNegative: 'Cancelar',
-          }
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
         );
 
         const location = result === 'granted';
 
-        if (!location) {
-          this.showPermissionDeniedAlert('ubicación');
-        }
+        // ✅ NO mostrar Alert nativo
 
         return {
           bluetooth: true,
@@ -160,16 +155,5 @@ export const BlePermissionsService = {
         allGranted: false,
       };
     }
-  },
-
-  showPermissionDeniedAlert(permission: string): void {
-    Alert.alert(
-      'Permisos requeridos',
-      `Para escanear beacons necesitamos acceso a ${permission}. Por favor, habilítalos en la configuración.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Abrir configuración', onPress: () => Linking.openSettings() },
-      ]
-    );
   },
 };

@@ -8,7 +8,7 @@ import {
   useRef,
   type ReactNode,
 } from 'react';
-import { Alert, AppState, type AppStateStatus } from 'react-native';
+import { AppState, type AppStateStatus } from 'react-native';
 import { AuthService, type LoginResult } from '@/services/auth';
 import { BiometricService } from '@/services/biometric';
 import {
@@ -40,6 +40,9 @@ interface AuthContextType {
   enableBiometricFromProfile: (username: string, password: string) => Promise<boolean>;
   disableBiometric: (userInitiated?: boolean) => Promise<void>;
   declineBiometric: () => Promise<void>;
+  // Nuevos callbacks para modales
+  setBiometricPromptCallback: (callback: ((credentials: LoginCredentials) => void) | null) => void;
+  setBiometricSuccessCallback: (callback: (() => void) | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -61,6 +64,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const appState = useRef(AppState.currentState);
   const isInitialized = useRef(false);
+
+  // Refs para callbacks (para evitar ciclos de dependencias)
+  const biometricPromptCallbackRef = useRef<((credentials: LoginCredentials) => void) | null>(null);
+  const biometricSuccessCallbackRef = useRef<(() => void) | null>(null);
 
   const clearAuthState = useCallback(() => {
     setUser(null);
@@ -211,41 +218,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
             (!storedUsername || storedUsername !== credentials.username);
 
           if (shouldAskBiometric) {
+            // ✅ Llamar callback en lugar de Alert.alert
             setTimeout(() => {
-              Alert.alert(
-                `Habilitar ${biometricType}`,
-                `¿Deseas usar ${biometricType} para iniciar sesión más rápido?`,
-                [
-                  { 
-                    text: 'No, gracias', 
-                    style: 'cancel',
-                    onPress: async () => {
-                      await BiometricService.setDeclined(true);
-                      setBiometricDeclined(true);
-                      console.log('[Auth] User declined biometric permanently');
-                    }
-                  },
-                  {
-                    text: 'Sí, habilitar',
-                    onPress: async () => {
-                      const success = await BiometricService.replaceCredentials(
-                        credentials.username, 
-                        credentials.password
-                      );
-                      if (success) {
-                        setBiometricEnabled(true);
-                        setBiometricDeclined(false);
-                        
-                        Alert.alert(
-                          '¡Listo!',
-                          `${biometricType} habilitado. La próxima vez podrás iniciar sesión más rápido.`,
-                          [{ text: 'OK' }]
-                        );
-                      }
-                    },
-                  },
-                ]
-              );
+              if (biometricPromptCallbackRef.current) {
+                biometricPromptCallbackRef.current(credentials);
+              }
             }, 500);
           }
 
@@ -261,7 +238,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setIsLoading(false);
       }
     },
-    [biometricAvailable, biometricEnabled, biometricDeclined, biometricType]
+    [biometricAvailable, biometricEnabled, biometricDeclined]
   );
 
   const refreshSession = useCallback(async (): Promise<boolean> => {
@@ -364,6 +341,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
     };
   }, [clearAuthState]);
 
+  // Funciones para setear callbacks desde componentes
+  const setBiometricPromptCallback = useCallback((callback: ((credentials: LoginCredentials) => void) | null) => {
+    biometricPromptCallbackRef.current = callback;
+  }, []);
+
+  const setBiometricSuccessCallback = useCallback((callback: (() => void) | null) => {
+    biometricSuccessCallbackRef.current = callback;
+  }, []);
+
   const value: AuthContextType = {
     user,
     isAuthenticated,
@@ -383,6 +369,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     enableBiometricFromProfile,
     disableBiometric,
     declineBiometric,
+    setBiometricPromptCallback,
+    setBiometricSuccessCallback,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

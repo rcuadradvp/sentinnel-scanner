@@ -1,6 +1,5 @@
 // screens/profile/ProfileScreen/ProfileScreen.tsx
 import { useState, useCallback } from 'react';
-import { Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScrollView } from 'react-native';
 import { VStack } from '@/components/ui/vstack';
@@ -12,6 +11,7 @@ import { UserInfoCard } from '@/components/profile/UserInfoCard';
 import { DeviceSyncCard } from '@/components/profile/DeviceSyncCard';
 import { BiometricSettingsCard } from '@/components/profile/BiometricSettingsCard';
 import { EnableBiometricModal } from '@/components/profile/EnableBiometricModal';
+import { PermissionModal } from '@/components/shared/PermissionModal';
 import { LoadingButton } from '@/components/shared/LoadingButton';
 
 export function ProfileScreen() {
@@ -29,32 +29,22 @@ export function ProfileScreen() {
   const { syncDevices, isLoading: isSyncLoading, error, lastSync } = useDevices();
   
   const [showEnableBiometricModal, setShowEnableBiometricModal] = useState(false);
+  const [showDisableBiometricModal, setShowDisableBiometricModal] = useState(false);
+  const [showBiometricSuccess, setShowBiometricSuccess] = useState(false);
   const [isBiometricLoading, setIsBiometricLoading] = useState(false);
 
   const handleToggleBiometric = useCallback(async (enable: boolean) => {
     if (enable) {
       setShowEnableBiometricModal(true);
     } else {
-      Alert.alert(
-        'Desactivar biometría',
-        '¿Estás seguro? Tendrás que configurarla nuevamente.',
-        [
-          { 
-            text: 'Cancelar', 
-            style: 'cancel' 
-          },
-          {
-            text: 'Desactivar',
-            style: 'destructive',
-            onPress: async () => {
-              setIsBiometricLoading(true);
-              await disableBiometric(true);
-              setIsBiometricLoading(false);
-            },
-          },
-        ]
-      );
+      setShowDisableBiometricModal(true);
     }
+  }, []);
+
+  const handleDisableBiometric = useCallback(async () => {
+    setIsBiometricLoading(true);
+    await disableBiometric(true);
+    setIsBiometricLoading(false);
   }, [disableBiometric]);
 
   const handleEnableBiometric = useCallback(async (password: string): Promise<boolean> => {
@@ -78,11 +68,7 @@ export function ProfileScreen() {
       const success = await enableBiometricFromProfile(user.email, password);
       
       if (success) {
-        Alert.alert(
-          '¡Listo!',
-          `${biometricType || 'Biometría'} habilitado correctamente. La próxima vez podrás iniciar sesión más rápido.`,
-          [{ text: 'OK' }]
-        );
+        setShowBiometricSuccess(true);
       }
 
       return success;
@@ -92,7 +78,7 @@ export function ProfileScreen() {
     } finally {
       setIsBiometricLoading(false);
     }
-  }, [user?.email, enableBiometricFromProfile, biometricType]);
+  }, [user?.email, enableBiometricFromProfile]);
 
   const handleSyncDevices = async () => {
     const success = await syncDevices();
@@ -106,48 +92,68 @@ export function ProfileScreen() {
   if (!user) return null;
 
   return (
-    <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-      <VStack className="flex-1 px-4 pt-4 bg-background-0">
-        <ScrollView 
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ flexGrow: 1 }}
-        >
-          <UserInfoCard user={user} />
+    <>
+      <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+        <VStack className="flex-1 px-4 pt-4 bg-background-0">
+          <ScrollView 
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ flexGrow: 1 }}
+          >
+            <UserInfoCard user={user} />
 
-          <DeviceSyncCard
-            lastSync={lastSync}
-            isLoading={isSyncLoading}
-            error={error}
-            onSync={handleSyncDevices}
+            <DeviceSyncCard
+              lastSync={lastSync}
+              isLoading={isSyncLoading}
+              error={error}
+              onSync={handleSyncDevices}
+            />
+
+            {biometricAvailable && (
+              <BiometricSettingsCard
+                biometricType={biometricType || 'Biometría'}
+                biometricEnabled={biometricEnabled}
+                biometricDeclined={biometricDeclined}
+                isLoading={isBiometricLoading}
+                onToggle={handleToggleBiometric}
+              />
+            )}
+          </ScrollView>
+
+          <LoadingButton
+            onPress={logout}
+            variant="danger"
+            className="mb-4"
+          >
+            Cerrar Sesión
+          </LoadingButton>
+
+          {/* Modal: Habilitar biometría (con contraseña) */}
+          <EnableBiometricModal
+            isOpen={showEnableBiometricModal}
+            onClose={() => setShowEnableBiometricModal(false)}
+            onConfirm={handleEnableBiometric}
+            biometricType={biometricType || 'Biometría'}
+            username={user.email}
           />
 
-          {biometricAvailable && (
-            <BiometricSettingsCard
-              biometricType={biometricType || 'Biometría'}
-              biometricEnabled={biometricEnabled}
-              biometricDeclined={biometricDeclined}
-              isLoading={isBiometricLoading}
-              onToggle={handleToggleBiometric}
-            />
-          )}
-        </ScrollView>
+          {/* Modal: Confirmar desactivar biometría */}
+          <PermissionModal
+            isOpen={showDisableBiometricModal}
+            onClose={() => setShowDisableBiometricModal(false)}
+            onConfirm={handleDisableBiometric}
+            type="biometric-disable"
+          />
 
-        <LoadingButton
-          onPress={logout}
-          variant="danger"
-          className="mb-4"
-        >
-          Cerrar Sesión
-        </LoadingButton>
-
-        <EnableBiometricModal
-          isOpen={showEnableBiometricModal}
-          onClose={() => setShowEnableBiometricModal(false)}
-          onConfirm={handleEnableBiometric}
-          biometricType={biometricType || 'Biometría'}
-          username={user.email}
-        />
-      </VStack>
-    </SafeAreaView>
+          {/* Modal: Éxito al habilitar biometría */}
+          <PermissionModal
+            isOpen={showBiometricSuccess}
+            onClose={() => setShowBiometricSuccess(false)}
+            onConfirm={() => setShowBiometricSuccess(false)}
+            type="biometric-success"
+            biometricType={biometricType || 'Biometría'}
+          />
+        </VStack>
+      </SafeAreaView>
+    </>
   );
 }
