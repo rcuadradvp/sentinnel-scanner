@@ -11,8 +11,6 @@ import { LoginForm } from '@/components/auth/LoginForm';
 import { BiometricButton } from '@/components/auth/BiometricButton';
 import { AuthErrorAlert } from '@/components/auth/AuthErrorAlert';
 import { PermissionModal } from '@/components/shared/PermissionModal';
-import { BiometricService } from '@/services/biometric';
-import type { LoginCredentials } from '@/types';
 
 export function LoginScreen() {
   const {
@@ -25,58 +23,47 @@ export function LoginScreen() {
     biometricType,
     isAuthenticated,
     isAppFreshStart,
-    setBiometricPromptCallback,
-    declineBiometric,
+    /**
+     * ✅ NUEVO: Usar el estado del contexto en lugar de callbacks
+     */
+    pendingBiometricPrompt,
+    confirmBiometricPrompt,
+    dismissBiometricPrompt,
   } = useAuth();
 
   const biometricAutoPrompted = useRef(false);
   const [isBiometricLoading, setIsBiometricLoading] = useState(false);
   
-  // Estados para modales
-  const [showBiometricPrompt, setShowBiometricPrompt] = useState(false);
+  // Estado para el modal de éxito
   const [showBiometricSuccess, setShowBiometricSuccess] = useState(false);
-  const [pendingCredentials, setPendingCredentials] = useState<LoginCredentials | null>(null);
 
-  // ✅ Manejadores definidos ANTES del useEffect
+  /**
+   * ✅ CORREGIDO: El modal se muestra basado en pendingBiometricPrompt
+   * No necesitamos setTimeout ni callbacks
+   */
+  const showBiometricPrompt = pendingBiometricPrompt !== null;
+
+  /**
+   * ✅ Manejador para cuando el usuario acepta habilitar biometría
+   */
   const handleEnableBiometric = useCallback(async () => {
-    if (!pendingCredentials) return;
+    const success = await confirmBiometricPrompt();
     
-    try {
-      const success = await BiometricService.replaceCredentials(
-        pendingCredentials.username,
-        pendingCredentials.password
-      );
-
-      if (success) {
-        setShowBiometricSuccess(true);
-      }
-    } catch (err) {
-      console.error('[Login] Error enabling biometric:', err);
-    } finally {
-      setPendingCredentials(null);
+    if (success) {
+      setShowBiometricSuccess(true);
     }
-  }, [pendingCredentials]);
+  }, [confirmBiometricPrompt]);
 
+  /**
+   * ✅ Manejador para cuando el usuario rechaza habilitar biometría
+   */
   const handleDeclineBiometric = useCallback(async () => {
-    await declineBiometric();
-    setPendingCredentials(null);
-  }, [declineBiometric]);
+    await dismissBiometricPrompt();
+  }, [dismissBiometricPrompt]);
 
-  // ✅ Configurar callback INMEDIATAMENTE cuando el componente se monta
-  useEffect(() => {
-    const callback = (credentials: LoginCredentials) => {
-      console.log('[LoginScreen] Biometric prompt callback triggered');
-      setPendingCredentials(credentials);
-      setShowBiometricPrompt(true);
-    };
-
-    setBiometricPromptCallback(callback);
-
-    return () => {
-      setBiometricPromptCallback(null);
-    };
-  }, [setBiometricPromptCallback]);
-
+  /**
+   * Auto-prompt biométrico al iniciar la app (si ya está habilitado)
+   */
   useEffect(() => {
     if (
       biometricEnabled &&
@@ -96,7 +83,7 @@ export function LoginScreen() {
     };
   }, []);
 
-  const handleLogin = async (credentials: LoginCredentials) => {
+  const handleLogin = async (credentials: { username: string; password: string }) => {
     await login(credentials);
   };
 
@@ -151,13 +138,13 @@ export function LoginScreen() {
         </VStack>
       </Box>
 
-      {/* Modal: Prompt para habilitar biometría */}
+      {/**
+       * ✅ CORREGIDO: Modal para habilitar biometría por primera vez
+       * Se muestra cuando pendingBiometricPrompt no es null
+       */}
       <PermissionModal
         isOpen={showBiometricPrompt}
-        onClose={() => {
-          setShowBiometricPrompt(false);
-          setPendingCredentials(null);
-        }}
+        onClose={handleDeclineBiometric}
         onConfirm={handleEnableBiometric}
         onCancel={handleDeclineBiometric}
         type="biometric-prompt"

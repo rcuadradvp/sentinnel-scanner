@@ -19,7 +19,11 @@ export function ScannerScreen() {
   } = useMinewScanner();
 
   const [showPermissionModal, setShowPermissionModal] = useState(false);
-  const [permissionDenied, setPermissionDenied] = useState(false);
+  /**
+   * ✅ CORREGIDO: Ahora usamos este estado para indicar si el usuario
+   * debe ir a configuración manualmente (porque ya no puede pedir permisos)
+   */
+  const [mustOpenSettings, setMustOpenSettings] = useState(false);
 
   const sortedBeacons = useMemo(() => {
     return [...beacons].sort((a, b) => {
@@ -34,7 +38,7 @@ export function ScannerScreen() {
     });
   }, [beacons]);
 
-  // ✅ Verificar permisos al montar el componente
+  // Verificar permisos al montar el componente
   useEffect(() => {
     checkInitialPermissions();
   }, []);
@@ -49,27 +53,29 @@ export function ScannerScreen() {
   const handleToggleScan = useCallback(async () => {
     if (isScanning) {
       await stopScan();
-    } else {
-      // ✅ Verificar permisos ANTES de intentar escanear
-      const perms = await BlePermissionsService.check();
-      
-      if (!perms.allGranted) {
-        console.log('[ScannerScreen] Permissions not granted, showing modal');
-        setPermissionDenied(false);
-        setShowPermissionModal(true);
-        return;
-      }
+      return;
+    }
 
-      const success = await startScan();
-      
-      // ✅ Si falla después de tener permisos, mostrar modal
-      if (!success) {
-        const errorMessage = error?.toLowerCase() || '';
-        if (errorMessage.includes('permiso') || errorMessage.includes('permission')) {
-          console.log('[ScannerScreen] Scan failed due to permissions');
-          setPermissionDenied(true);
-          setShowPermissionModal(true);
-        }
+    // Verificar permisos ANTES de intentar escanear
+    const perms = await BlePermissionsService.check();
+    
+    if (!perms.allGranted) {
+      console.log('[ScannerScreen] Permissions not granted, showing modal');
+      // ✅ Resetear el estado - aún no sabemos si debe ir a settings
+      setMustOpenSettings(false);
+      setShowPermissionModal(true);
+      return;
+    }
+
+    const success = await startScan();
+    
+    // Si falla después de tener permisos, podría ser un problema de Bluetooth
+    if (!success) {
+      const errorMessage = error?.toLowerCase() || '';
+      if (errorMessage.includes('permiso') || errorMessage.includes('permission')) {
+        console.log('[ScannerScreen] Scan failed due to permissions');
+        setMustOpenSettings(true);
+        setShowPermissionModal(true);
       }
     }
   }, [isScanning, startScan, stopScan, error]);
@@ -81,31 +87,43 @@ export function ScannerScreen() {
     }
   }, [isScanning, clearDevices, handleToggleScan]);
 
+  /**
+   * ✅ CORREGIDO: Manejo correcto del botón de confirmar en el modal
+   */
   const handlePermissionConfirm = async () => {
-    if (permissionDenied) {
-      // Abrir configuración del sistema
-      console.log('[ScannerScreen] Opening settings');
+    if (mustOpenSettings) {
+      // Ya sabemos que debe ir a configuración
+      console.log('[ScannerScreen] Opening settings (user already denied permanently)');
       await Linking.openSettings();
       setShowPermissionModal(false);
+      return;
+    }
+
+    // Intentar solicitar permisos
+    console.log('[ScannerScreen] Requesting permissions');
+    const perms = await BlePermissionsService.request();
+    
+    if (perms.allGranted) {
+      // ✅ Permisos concedidos - cerrar modal e iniciar escaneo
+      setShowPermissionModal(false);
+      setMustOpenSettings(false);
+      await startScan();
+    } else if (!perms.canAskAgain) {
+      // ✅ NUEVO: El usuario denegó permanentemente (never_ask_again)
+      // Ahora debe ir a configuración manualmente
+      console.log('[ScannerScreen] Permissions denied permanently, must open settings');
+      setMustOpenSettings(true);
+      // No cerramos el modal - actualizamos para mostrar el warning
     } else {
-      // Intentar solicitar permisos de nuevo
-      console.log('[ScannerScreen] Requesting permissions');
-      const perms = await BlePermissionsService.request();
-      
-      if (perms.allGranted) {
-        setShowPermissionModal(false);
-        // Intentar escanear automáticamente
-        await startScan();
-      } else {
-        // Si no se concedieron, marcar como denegado permanentemente
-        setPermissionDenied(true);
-      }
+      // Usuario denegó pero puede volver a preguntar
+      console.log('[ScannerScreen] Permissions denied, can ask again');
+      // Mantenemos el modal abierto para que pueda intentar de nuevo
     }
   };
 
   const handlePermissionClose = () => {
     setShowPermissionModal(false);
-    setPermissionDenied(false);
+    setMustOpenSettings(false);
   };
 
   return (
@@ -131,7 +149,20 @@ export function ScannerScreen() {
         onClose={handlePermissionClose}
         onConfirm={handlePermissionConfirm}
         type="bluetooth"
-        showManualWarning={permissionDenied}
+        /**
+         * ✅ CORREGIDO: Mostrar warning de configuración manual
+         * cuando mustOpenSettings es true
+         */
+        showManualWarning={mustOpenSettings}
+        /**
+         * ✅ NUEVO: Cambiar el texto del botón según el estado
+         */
+        title={mustOpenSettings ? 'Permisos requeridos' : undefined}
+        description={
+          mustOpenSettings 
+            ? 'Los permisos fueron denegados. Debes habilitarlos manualmente en la configuración del dispositivo.'
+            : undefined
+        }
       />
     </>
   );

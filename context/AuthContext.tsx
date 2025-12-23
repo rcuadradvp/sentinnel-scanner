@@ -31,6 +31,11 @@ interface AuthContextType {
   biometricType: string | null;
   biometricDeclined: boolean;
   isAppFreshStart: boolean;
+  /**
+   * ✅ NUEVO: Estado para el prompt de biometría
+   * Contiene las credenciales si hay un prompt pendiente, null si no
+   */
+  pendingBiometricPrompt: LoginCredentials | null;
   login: (credentials: LoginCredentials) => Promise<boolean>;
   loginWithBiometric: () => Promise<boolean>;
   logout: () => Promise<void>;
@@ -40,9 +45,11 @@ interface AuthContextType {
   enableBiometricFromProfile: (username: string, password: string) => Promise<boolean>;
   disableBiometric: (userInitiated?: boolean) => Promise<void>;
   declineBiometric: () => Promise<void>;
-  // Nuevos callbacks para modales
-  setBiometricPromptCallback: (callback: ((credentials: LoginCredentials) => void) | null) => void;
-  setBiometricSuccessCallback: (callback: (() => void) | null) => void;
+  /**
+   * ✅ NUEVO: Funciones para manejar el prompt de biometría
+   */
+  confirmBiometricPrompt: () => Promise<boolean>;
+  dismissBiometricPrompt: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -61,18 +68,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [biometricType, setBiometricType] = useState<string | null>(null);
   const [biometricDeclined, setBiometricDeclined] = useState(false);
   const [isAppFreshStart, setIsAppFreshStart] = useState(true);
+  
+  /**
+   * ✅ NUEVO: Estado para el prompt de biometría
+   * Si no es null, significa que hay un prompt pendiente
+   */
+  const [pendingBiometricPrompt, setPendingBiometricPrompt] = useState<LoginCredentials | null>(null);
 
   const appState = useRef(AppState.currentState);
   const isInitialized = useRef(false);
-
-  // Refs para callbacks (para evitar ciclos de dependencias)
-  const biometricPromptCallbackRef = useRef<((credentials: LoginCredentials) => void) | null>(null);
-  const biometricSuccessCallbackRef = useRef<(() => void) | null>(null);
 
   const clearAuthState = useCallback(() => {
     setUser(null);
     setIsAuthenticated(false);
     setError(null);
+    setPendingBiometricPrompt(null);
   }, []);
 
   const logout = useCallback(async () => {
@@ -140,6 +150,47 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const declineBiometric = useCallback(async () => {
     await BiometricService.setDeclined(true);
     setBiometricDeclined(true);
+  }, []);
+
+  /**
+   * ✅ NUEVO: Confirmar el prompt de biometría (usuario acepta)
+   */
+  const confirmBiometricPrompt = useCallback(async (): Promise<boolean> => {
+    if (!pendingBiometricPrompt) {
+      console.log('[Auth] No pending biometric prompt to confirm');
+      return false;
+    }
+
+    try {
+      const success = await BiometricService.replaceCredentials(
+        pendingBiometricPrompt.username,
+        pendingBiometricPrompt.password
+      );
+
+      if (success) {
+        setBiometricEnabled(true);
+        setBiometricDeclined(false);
+        console.log('[Auth] Biometric enabled successfully from prompt');
+      }
+
+      // Limpiar el prompt pendiente
+      setPendingBiometricPrompt(null);
+      return success;
+    } catch (err) {
+      console.error('[Auth] Error confirming biometric prompt:', err);
+      setPendingBiometricPrompt(null);
+      return false;
+    }
+  }, [pendingBiometricPrompt]);
+
+  /**
+   * ✅ NUEVO: Descartar el prompt de biometría (usuario rechaza)
+   */
+  const dismissBiometricPrompt = useCallback(async (): Promise<void> => {
+    await BiometricService.setDeclined(true);
+    setBiometricDeclined(true);
+    setPendingBiometricPrompt(null);
+    console.log('[Auth] Biometric prompt dismissed');
   }, []);
 
   const loginWithBiometric = useCallback(async (): Promise<boolean> => {
@@ -211,6 +262,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
             setBiometricDeclined(false);
           }
 
+          /**
+           * ✅ CORREGIDO: En lugar de usar callback con setTimeout,
+           * simplemente guardamos las credenciales pendientes
+           * El componente de UI reaccionará a este estado
+           */
           const shouldAskBiometric = 
             biometricAvailable && 
             !biometricEnabled && 
@@ -218,12 +274,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
             (!storedUsername || storedUsername !== credentials.username);
 
           if (shouldAskBiometric) {
-            // ✅ Llamar callback en lugar de Alert.alert
-            setTimeout(() => {
-              if (biometricPromptCallbackRef.current) {
-                biometricPromptCallbackRef.current(credentials);
-              }
-            }, 500);
+            console.log('[Auth] Setting pending biometric prompt');
+            setPendingBiometricPrompt(credentials);
           }
 
           return true;
@@ -341,15 +393,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     };
   }, [clearAuthState]);
 
-  // Funciones para setear callbacks desde componentes
-  const setBiometricPromptCallback = useCallback((callback: ((credentials: LoginCredentials) => void) | null) => {
-    biometricPromptCallbackRef.current = callback;
-  }, []);
-
-  const setBiometricSuccessCallback = useCallback((callback: (() => void) | null) => {
-    biometricSuccessCallbackRef.current = callback;
-  }, []);
-
   const value: AuthContextType = {
     user,
     isAuthenticated,
@@ -360,6 +403,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     biometricType,
     biometricDeclined,
     isAppFreshStart,
+    pendingBiometricPrompt,
     login,
     loginWithBiometric,
     logout,
@@ -369,8 +413,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     enableBiometricFromProfile,
     disableBiometric,
     declineBiometric,
-    setBiometricPromptCallback,
-    setBiometricSuccessCallback,
+    confirmBiometricPrompt,
+    dismissBiometricPrompt,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

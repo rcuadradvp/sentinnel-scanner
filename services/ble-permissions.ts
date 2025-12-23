@@ -1,6 +1,18 @@
 // services/ble-permissions.ts
 import { Platform, PermissionsAndroid } from 'react-native';
-import type { BlePermissions } from '@/types';
+
+export interface BlePermissions {
+  bluetooth: boolean;
+  bluetoothScan: boolean;
+  bluetoothConnect: boolean;
+  location: boolean;
+  allGranted: boolean;
+  /** 
+   * ✅ NUEVO: Indica si algún permiso fue denegado permanentemente
+   * En Android, después de 2 rechazos, el sistema ya no muestra el diálogo
+   */
+  canAskAgain: boolean;
+}
 
 export const BlePermissionsService = {
   /**
@@ -28,13 +40,14 @@ export const BlePermissionsService = {
    * iOS: Verificar permisos
    */
   async checkiOS(): Promise<BlePermissions> {
-    // En iOS, los permisos se manejan automáticamente
+    // En iOS, los permisos se manejan automáticamente por el sistema
     return {
       bluetooth: true,
       bluetoothScan: true,
       bluetoothConnect: true,
       location: true,
       allGranted: true,
+      canAskAgain: true,
     };
   },
 
@@ -48,11 +61,13 @@ export const BlePermissionsService = {
       bluetoothConnect: true,
       location: true,
       allGranted: true,
+      canAskAgain: true,
     };
   },
 
   /**
    * Android: Verificar permisos
+   * También verifica si se puede volver a preguntar
    */
   async checkAndroid(): Promise<BlePermissions> {
     const apiLevel = Platform.Version as number;
@@ -69,15 +84,20 @@ export const BlePermissionsService = {
         PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
       );
 
+      const allGranted = bluetoothScan && bluetoothConnect && location;
+
+      // ✅ Si todos están concedidos, canAskAgain es irrelevante (true)
+      // Si no están concedidos, necesitamos verificar con request para saber si canAskAgain
       return {
         bluetooth: true,
         bluetoothScan,
         bluetoothConnect,
         location,
-        allGranted: bluetoothScan && bluetoothConnect && location,
+        allGranted,
+        canAskAgain: allGranted ? true : true, // Se determinará en request()
       };
     } else {
-      // Android 11 y anteriores
+      // Android 11 y anteriores - solo necesita ubicación
       const location = await PermissionsAndroid.check(
         PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
       );
@@ -88,13 +108,14 @@ export const BlePermissionsService = {
         bluetoothConnect: true,
         location,
         allGranted: location,
+        canAskAgain: location ? true : true,
       };
     }
   },
 
   /**
    * Android: Solicitar permisos
-   * NO muestra alerts - solo solicita y retorna el resultado
+   * ✅ CORREGIDO: Ahora detecta 'never_ask_again' para saber si debe ir a configuración
    */
   async requestAndroid(): Promise<BlePermissions> {
     const apiLevel = Platform.Version as number;
@@ -108,17 +129,30 @@ export const BlePermissionsService = {
           PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
         ]);
 
-        const bluetoothScan =
-          results[PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN] === 'granted';
-        const bluetoothConnect =
-          results[PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT] === 'granted';
-        const location =
-          results[PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION] === 'granted';
+        const bluetoothScanResult = results[PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN];
+        const bluetoothConnectResult = results[PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT];
+        const locationResult = results[PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION];
 
+        const bluetoothScan = bluetoothScanResult === 'granted';
+        const bluetoothConnect = bluetoothConnectResult === 'granted';
+        const location = locationResult === 'granted';
         const allGranted = bluetoothScan && bluetoothConnect && location;
 
-        // ✅ NO mostrar Alert nativo
-        // El componente que llama a esta función mostrará el PermissionModal
+        // ✅ NUEVO: Detectar si algún permiso fue denegado permanentemente
+        const hasNeverAskAgain = 
+          bluetoothScanResult === 'never_ask_again' ||
+          bluetoothConnectResult === 'never_ask_again' ||
+          locationResult === 'never_ask_again';
+
+        // canAskAgain es false si algún permiso tiene 'never_ask_again'
+        const canAskAgain = !hasNeverAskAgain;
+
+        console.log('[BlePermissions] Request results:', {
+          bluetoothScan: bluetoothScanResult,
+          bluetoothConnect: bluetoothConnectResult,
+          location: locationResult,
+          canAskAgain,
+        });
 
         return {
           bluetooth: true,
@@ -126,6 +160,7 @@ export const BlePermissionsService = {
           bluetoothConnect,
           location,
           allGranted,
+          canAskAgain,
         };
       } else {
         // Android 11 y anteriores
@@ -134,8 +169,9 @@ export const BlePermissionsService = {
         );
 
         const location = result === 'granted';
+        const canAskAgain = result !== 'never_ask_again';
 
-        // ✅ NO mostrar Alert nativo
+        console.log('[BlePermissions] Location result:', result, 'canAskAgain:', canAskAgain);
 
         return {
           bluetooth: true,
@@ -143,6 +179,7 @@ export const BlePermissionsService = {
           bluetoothConnect: true,
           location,
           allGranted: location,
+          canAskAgain,
         };
       }
     } catch (error) {
@@ -153,6 +190,7 @@ export const BlePermissionsService = {
         bluetoothConnect: false,
         location: false,
         allGranted: false,
+        canAskAgain: false,
       };
     }
   },

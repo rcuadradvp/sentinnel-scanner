@@ -4,6 +4,7 @@ import { Slot, useRouter, useSegments, useRootNavigationState } from 'expo-route
 import { View, ActivityIndicator } from 'react-native';
 import { GluestackUIProvider } from '@/components/ui/gluestack-ui-provider';
 import { AuthProvider, useAuth } from '@/context';
+import { BiometricPromptHandler } from '@/components/shared/BiometricPromptHandler' // ✅ IMPORTAR
 
 import '@/global.css';
 
@@ -20,7 +21,6 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     const inAuthGroup = segments[0] === '(auth)';
 
     if (isAuthenticated && inAuthGroup) {
-      // ✅ CAMBIADO: Redirigir a scanner en lugar de profile
       router.replace('/(app)/(tabs)/scanner');
     } else if (!isAuthenticated && !inAuthGroup) {
       router.replace('/(auth)/login');
@@ -42,6 +42,9 @@ export default function RootLayout() {
   return (
     <GluestackUIProvider mode="light">
       <AuthProvider>
+        {/* ✅ AGREGAR AQUÍ - Dentro de AuthProvider, fuera de AuthGate */}
+        <BiometricPromptHandler />
+        
         <AuthGate>
           <Slot />
         </AuthGate>

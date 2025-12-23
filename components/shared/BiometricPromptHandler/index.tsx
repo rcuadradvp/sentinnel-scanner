@@ -1,0 +1,1 @@
+export { BiometricPromptHandler } from './BiometricPromptHandler'

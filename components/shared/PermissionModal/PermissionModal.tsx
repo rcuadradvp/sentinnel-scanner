@@ -9,21 +9,27 @@ import { Icon } from '@/components/ui/icon';
 import { 
   Bluetooth, 
   MapPin, 
+  Camera,
   AlertCircle, 
   Fingerprint, 
   CheckCircle2, 
-  AlertTriangle 
+  AlertTriangle,
+  Settings,
 } from 'lucide-react-native';
 
 interface PermissionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: () => void;
-  onCancel?: () => void; // Para modales con dos acciones
+  onCancel?: () => void;
   type: 'bluetooth' | 'location' | 'camera' | 'biometric-prompt' | 'biometric-success' | 'biometric-disable';
   title?: string;
   description?: string;
-  biometricType?: string; // Ej: "Face ID", "huella digital"
+  biometricType?: string;
+  /**
+   * ✅ NUEVO: Cuando es true, muestra el warning de configuración manual
+   * y cambia el botón a "Abrir configuración"
+   */
   showManualWarning?: boolean;
 }
 
@@ -34,10 +40,14 @@ const PERMISSION_CONFIG = {
     iconColor: 'text-primary-600',
     title: 'Permisos necesarios',
     description: 'Para escanear beacons necesitas conceder permisos de Bluetooth y ubicación.',
-    confirmText: 'Abrir configuración',
+    confirmText: 'Permitir acceso',
     cancelText: 'Cancelar',
     showCancel: true,
     confirmBgColor: 'bg-primary-500',
+    /**
+     * ✅ NUEVO: Texto del botón cuando showManualWarning es true
+     */
+    confirmTextManual: 'Abrir configuración',
   },
   location: {
     icon: MapPin,
@@ -49,9 +59,10 @@ const PERMISSION_CONFIG = {
     cancelText: 'Cancelar',
     showCancel: true,
     confirmBgColor: 'bg-primary-500',
+    confirmTextManual: 'Abrir configuración',
   },
   camera: {
-    icon: MapPin,
+    icon: Camera,
     iconBgColor: 'bg-primary-100',
     iconColor: 'text-primary-600',
     title: 'Acceso a la cámara',
@@ -60,6 +71,7 @@ const PERMISSION_CONFIG = {
     cancelText: 'Cancelar',
     showCancel: true,
     confirmBgColor: 'bg-primary-500',
+    confirmTextManual: 'Abrir configuración',
   },
   'biometric-prompt': {
     icon: Fingerprint,
@@ -71,6 +83,7 @@ const PERMISSION_CONFIG = {
     cancelText: 'No, gracias',
     showCancel: true,
     confirmBgColor: 'bg-primary-500',
+    confirmTextManual: 'Sí, habilitar',
   },
   'biometric-success': {
     icon: CheckCircle2,
@@ -78,10 +91,11 @@ const PERMISSION_CONFIG = {
     iconColor: 'text-success-600',
     title: '¡Listo!',
     description: '{biometricType} habilitado. La próxima vez podrás iniciar sesión más rápido.',
-    confirmText: 'OK',
+    confirmText: 'Continuar',
     cancelText: '',
     showCancel: false,
     confirmBgColor: 'bg-success-500',
+    confirmTextManual: 'Continuar',
   },
   'biometric-disable': {
     icon: AlertTriangle,
@@ -93,6 +107,7 @@ const PERMISSION_CONFIG = {
     cancelText: 'Cancelar',
     showCancel: true,
     confirmBgColor: 'bg-error-500',
+    confirmTextManual: 'Desactivar',
   },
 };
 
@@ -114,6 +129,13 @@ export function PermissionModal({
   const finalTitle = (title || config.title).replace('{biometricType}', biometricType);
   const finalDescription = (description || config.description).replace('{biometricType}', biometricType);
   const confirmBgColor = config.confirmBgColor || 'bg-primary-500';
+  
+  /**
+   * ✅ NUEVO: Usar el texto de confirmación apropiado según showManualWarning
+   */
+  const confirmText = showManualWarning 
+    ? (config.confirmTextManual || 'Abrir configuración')
+    : config.confirmText;
 
   const handleCancel = () => {
     if (onCancel) {
@@ -124,7 +146,11 @@ export function PermissionModal({
 
   const handleConfirm = () => {
     onConfirm();
-    onClose();
+    // ✅ Solo cerrar si NO es un caso de manual warning
+    // El componente padre decidirá cuándo cerrar
+    if (!showManualWarning) {
+      onClose();
+    }
   };
 
   return (
@@ -148,11 +174,15 @@ export function PermissionModal({
               {finalDescription}
             </Text>
 
+            {/**
+             * ✅ Warning de configuración manual
+             * Se muestra cuando showManualWarning es true
+             */}
             {showManualWarning && (
               <HStack className="items-start gap-2 bg-warning-50 p-3 rounded-lg">
                 <Icon as={AlertCircle} size="sm" className="text-warning-600 mt-0.5" />
                 <Text className="text-xs text-warning-700 flex-1">
-                  Activa los permisos manualmente en la configuración de tu dispositivo
+                  Los permisos fueron denegados permanentemente. Debes activarlos manualmente en la configuración de tu dispositivo.
                 </Text>
               </HStack>
             )}
@@ -173,7 +203,13 @@ export function PermissionModal({
                 className={`flex-1 ${confirmBgColor}`}
                 onPress={handleConfirm}
               >
-                <ButtonText>{config.confirmText}</ButtonText>
+                {/**
+                 * ✅ NUEVO: Mostrar ícono de configuración si showManualWarning es true
+                 */}
+                {showManualWarning && (
+                  <Icon as={Settings} size="sm" className="text-white mr-2" />
+                )}
+                <ButtonText>{confirmText}</ButtonText>
               </Button>
             </HStack>
           ) : (
@@ -181,7 +217,7 @@ export function PermissionModal({
               className={`w-full ${confirmBgColor}`}
               onPress={handleConfirm}
             >
-              <ButtonText>{config.confirmText}</ButtonText>
+              <ButtonText>{confirmText}</ButtonText>
             </Button>
           )}
         </ModalFooter>
