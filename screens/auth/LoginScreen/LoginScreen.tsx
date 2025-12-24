@@ -23,9 +23,6 @@ export function LoginScreen() {
     biometricType,
     isAuthenticated,
     isAppFreshStart,
-    /**
-     * ✅ NUEVO: Usar el estado del contexto en lugar de callbacks
-     */
     pendingBiometricPrompt,
     confirmBiometricPrompt,
     dismissBiometricPrompt,
@@ -33,37 +30,18 @@ export function LoginScreen() {
 
   const biometricAutoPrompted = useRef(false);
   const [isBiometricLoading, setIsBiometricLoading] = useState(false);
-  
-  // Estado para el modal de éxito
   const [showBiometricSuccess, setShowBiometricSuccess] = useState(false);
-
-  /**
-   * ✅ CORREGIDO: El modal se muestra basado en pendingBiometricPrompt
-   * No necesitamos setTimeout ni callbacks
-   */
   const showBiometricPrompt = pendingBiometricPrompt !== null;
-
-  /**
-   * ✅ Manejador para cuando el usuario acepta habilitar biometría
-   */
   const handleEnableBiometric = useCallback(async () => {
-    const success = await confirmBiometricPrompt();
-    
+  const success = await confirmBiometricPrompt();
     if (success) {
       setShowBiometricSuccess(true);
     }
   }, [confirmBiometricPrompt]);
-
-  /**
-   * ✅ Manejador para cuando el usuario rechaza habilitar biometría
-   */
   const handleDeclineBiometric = useCallback(async () => {
     await dismissBiometricPrompt();
   }, [dismissBiometricPrompt]);
 
-  /**
-   * Auto-prompt biométrico al iniciar la app (si ya está habilitado)
-   */
   useEffect(() => {
     if (
       biometricEnabled &&
@@ -94,7 +72,6 @@ export function LoginScreen() {
     try {
       const success = await loginWithBiometric();
       if (!success) {
-        console.log('[Login] Biometric failed or cancelled, user can enter password');
       }
     } finally {
       setIsBiometricLoading(false);
@@ -137,11 +114,6 @@ export function LoginScreen() {
           )}
         </VStack>
       </Box>
-
-      {/**
-       * ✅ CORREGIDO: Modal para habilitar biometría por primera vez
-       * Se muestra cuando pendingBiometricPrompt no es null
-       */}
       <PermissionModal
         isOpen={showBiometricPrompt}
         onClose={handleDeclineBiometric}
@@ -150,8 +122,6 @@ export function LoginScreen() {
         type="biometric-prompt"
         biometricType={biometricType || 'Biometría'}
       />
-
-      {/* Modal: Éxito al habilitar biometría */}
       <PermissionModal
         isOpen={showBiometricSuccess}
         onClose={() => setShowBiometricSuccess(false)}

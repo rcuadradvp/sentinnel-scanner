@@ -51,6 +51,11 @@ export const Endpoints = {
   GATEWAYS: {
     BASE: '/gateways',
     BY_ID: (uuid: string) => `/gateways/${uuid}`,
+    SEARCH: (uuid: string) => `/gateways/search/${uuid}`,
+  },
+
+  GATEWAY_DEVICES: {
+    BASE: '/gatewaydevices',
   },
 
   VERSION: '/version',

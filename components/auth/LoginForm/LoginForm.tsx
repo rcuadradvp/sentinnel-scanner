@@ -76,7 +76,7 @@ export function LoginForm({
         <LoadingButton
           onPress={handleSubmit}
           isLoading={isLoading}
-          variant="primary"
+          variant="info"
         >
           Ingresar
         </LoadingButton>

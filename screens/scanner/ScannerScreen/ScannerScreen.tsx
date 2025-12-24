@@ -1,7 +1,7 @@
 // screens/scanner/ScannerScreen/ScannerScreen.tsx
-import { useCallback, useMemo, useState, useEffect } from 'react';
+import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Linking } from 'react-native';
+import { Linking, AppState, AppStateStatus } from 'react-native';
 import { useMinewScanner } from '@/hooks/useMinewScanner';
 import { BlePermissionsService } from '@/services/ble-permissions';
 import { ScannerHeader } from '@/components/scanner/ScannerHeader';
@@ -19,26 +19,49 @@ export function ScannerScreen() {
   } = useMinewScanner();
 
   const [showPermissionModal, setShowPermissionModal] = useState(false);
-  /**
-   * ✅ CORREGIDO: Ahora usamos este estado para indicar si el usuario
-   * debe ir a configuración manualmente (porque ya no puede pedir permisos)
-   */
   const [mustOpenSettings, setMustOpenSettings] = useState(false);
+  const waitingForSettingsReturn = useRef(false);
+  const appState = useRef(AppState.currentState);
 
   const sortedBeacons = useMemo(() => {
     return [...beacons].sort((a, b) => {
-      // Primero por RSSI (señal más fuerte primero)
       if (b.rssi !== a.rssi) {
         return b.rssi - a.rssi;
       }
-      // Luego por nombre
       const nameA = a.name || a.mac;
       const nameB = b.name || b.mac;
       return nameA.localeCompare(nameB);
     });
   }, [beacons]);
 
-  // Verificar permisos al montar el componente
+
+  useEffect(() => {
+    const handleAppStateChange = async (nextAppState: AppStateStatus) => {
+      if (
+        appState.current.match(/inactive|background/) &&
+        nextAppState === 'active' &&
+        waitingForSettingsReturn.current
+      ) {
+        const perms = await BlePermissionsService.check();
+        
+        if (perms.allGranted) {
+          setMustOpenSettings(false);
+          setShowPermissionModal(false);
+          waitingForSettingsReturn.current = false;
+        } else {
+        }
+      }
+      
+      appState.current = nextAppState;
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
   useEffect(() => {
     checkInitialPermissions();
   }, []);
@@ -46,7 +69,6 @@ export function ScannerScreen() {
   const checkInitialPermissions = async () => {
     const perms = await BlePermissionsService.check();
     if (!perms.allGranted) {
-      console.log('[ScannerScreen] Permissions not granted on mount');
     }
   };
 
@@ -56,24 +78,20 @@ export function ScannerScreen() {
       return;
     }
 
-    // Verificar permisos ANTES de intentar escanear
     const perms = await BlePermissionsService.check();
     
-    if (!perms.allGranted) {
-      console.log('[ScannerScreen] Permissions not granted, showing modal');
-      // ✅ Resetear el estado - aún no sabemos si debe ir a settings
-      setMustOpenSettings(false);
+    if (!perms.allGranted) {      
+      const shouldOpenSettings = !perms.canAskAgain;
+      setMustOpenSettings(shouldOpenSettings);
       setShowPermissionModal(true);
       return;
     }
 
     const success = await startScan();
     
-    // Si falla después de tener permisos, podría ser un problema de Bluetooth
     if (!success) {
       const errorMessage = error?.toLowerCase() || '';
       if (errorMessage.includes('permiso') || errorMessage.includes('permission')) {
-        console.log('[ScannerScreen] Scan failed due to permissions');
         setMustOpenSettings(true);
         setShowPermissionModal(true);
       }
@@ -87,43 +105,28 @@ export function ScannerScreen() {
     }
   }, [isScanning, clearDevices, handleToggleScan]);
 
-  /**
-   * ✅ CORREGIDO: Manejo correcto del botón de confirmar en el modal
-   */
   const handlePermissionConfirm = async () => {
     if (mustOpenSettings) {
-      // Ya sabemos que debe ir a configuración
-      console.log('[ScannerScreen] Opening settings (user already denied permanently)');
+      waitingForSettingsReturn.current = true;
       await Linking.openSettings();
-      setShowPermissionModal(false);
       return;
     }
 
-    // Intentar solicitar permisos
-    console.log('[ScannerScreen] Requesting permissions');
     const perms = await BlePermissionsService.request();
     
     if (perms.allGranted) {
-      // ✅ Permisos concedidos - cerrar modal e iniciar escaneo
       setShowPermissionModal(false);
       setMustOpenSettings(false);
       await startScan();
     } else if (!perms.canAskAgain) {
-      // ✅ NUEVO: El usuario denegó permanentemente (never_ask_again)
-      // Ahora debe ir a configuración manualmente
-      console.log('[ScannerScreen] Permissions denied permanently, must open settings');
       setMustOpenSettings(true);
-      // No cerramos el modal - actualizamos para mostrar el warning
     } else {
-      // Usuario denegó pero puede volver a preguntar
-      console.log('[ScannerScreen] Permissions denied, can ask again');
-      // Mantenemos el modal abierto para que pueda intentar de nuevo
     }
   };
 
   const handlePermissionClose = () => {
     setShowPermissionModal(false);
-    setMustOpenSettings(false);
+    waitingForSettingsReturn.current = false;
   };
 
   return (
@@ -143,20 +146,12 @@ export function ScannerScreen() {
         />
       </SafeAreaView>
 
-      {/* Permission Modal */}
       <PermissionModal
         isOpen={showPermissionModal}
         onClose={handlePermissionClose}
         onConfirm={handlePermissionConfirm}
         type="bluetooth"
-        /**
-         * ✅ CORREGIDO: Mostrar warning de configuración manual
-         * cuando mustOpenSettings es true
-         */
         showManualWarning={mustOpenSettings}
-        /**
-         * ✅ NUEVO: Cambiar el texto del botón según el estado
-         */
         title={mustOpenSettings ? 'Permisos requeridos' : undefined}
         description={
           mustOpenSettings 

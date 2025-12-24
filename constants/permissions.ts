@@ -11,7 +11,7 @@ export const AppPaths = {
   // Gateway
   GATEWAY: 'GATEWAY',
   GATEWAYS_BY_ZONE: 'GATEWAYS_BY_ZONE',
-  MASTER_GATEWAYS: 'MASTER_GATEWAYS', // ✅ Nuevo path para master
+  MASTER_GATEWAYS: 'MASTER_GATEWAYS',
   
   // Alerts
   ALERTS: 'ALERTS',

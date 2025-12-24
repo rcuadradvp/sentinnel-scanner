@@ -7,7 +7,7 @@ interface LoadingButtonProps {
   isLoading?: boolean;
   isDisabled?: boolean;
   children: React.ReactNode;
-  variant?: 'primary' | 'secondary' | 'danger';
+  variant?: 'primary' | 'secondary' | 'danger' | 'info'
   className?: string;
 }
 
@@ -27,6 +27,8 @@ export function LoadingButton({
         return 'bg-error-500 active:bg-error-600';
       case 'secondary':
         return 'bg-secondary-500 active:bg-secondary-600';
+       case 'info':
+        return 'bg-info-500 active:bg-info-600';
       default:
         return 'bg-primary-500 active:bg-primary-600';
     }

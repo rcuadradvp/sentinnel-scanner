@@ -1,5 +1,11 @@
 // services/ble-permissions.ts
 import { Platform, PermissionsAndroid } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+/**
+ * ✅ NUEVO: Key para persistir el estado de "never_ask_again"
+ */
+const BLE_PERMISSIONS_DENIED_KEY = '@ble_permissions_denied_permanently';
 
 export interface BlePermissions {
   bluetooth: boolean;
@@ -8,13 +14,53 @@ export interface BlePermissions {
   location: boolean;
   allGranted: boolean;
   /** 
-   * ✅ NUEVO: Indica si algún permiso fue denegado permanentemente
+   * ✅ Indica si algún permiso fue denegado permanentemente
    * En Android, después de 2 rechazos, el sistema ya no muestra el diálogo
    */
   canAskAgain: boolean;
 }
 
 export const BlePermissionsService = {
+  /**
+   * ✅ NUEVO: Guardar estado de denegación permanente
+   */
+  async setDeniedPermanently(denied: boolean): Promise<void> {
+    try {
+      if (denied) {
+        await AsyncStorage.setItem(BLE_PERMISSIONS_DENIED_KEY, 'true');
+      } else {
+        await AsyncStorage.removeItem(BLE_PERMISSIONS_DENIED_KEY);
+      }
+    } catch (error) {
+      console.error('[BlePermissions] Error saving denied state:', error);
+    }
+  },
+
+  /**
+   * ✅ NUEVO: Verificar si fue denegado permanentemente (para check())
+   */
+  async wasDeniedPermanently(): Promise<boolean> {
+    try {
+      const value = await AsyncStorage.getItem(BLE_PERMISSIONS_DENIED_KEY);
+      return value === 'true';
+    } catch (error) {
+      console.error('[BlePermissions] Error reading denied state:', error);
+      return false;
+    }
+  },
+
+  /**
+   * ✅ NUEVO: Resetear el estado cuando los permisos son concedidos
+   * (útil si el usuario los habilita manualmente en configuración)
+   */
+  async clearDeniedState(): Promise<void> {
+    try {
+      await AsyncStorage.removeItem(BLE_PERMISSIONS_DENIED_KEY);
+    } catch (error) {
+      console.error('[BlePermissions] Error clearing denied state:', error);
+    }
+  },
+
   /**
    * Verifica todos los permisos necesarios
    */
@@ -67,7 +113,7 @@ export const BlePermissionsService = {
 
   /**
    * Android: Verificar permisos
-   * También verifica si se puede volver a preguntar
+   * ✅ CORREGIDO: Ahora también verifica el estado persistido de canAskAgain
    */
   async checkAndroid(): Promise<BlePermissions> {
     const apiLevel = Platform.Version as number;
@@ -86,15 +132,29 @@ export const BlePermissionsService = {
 
       const allGranted = bluetoothScan && bluetoothConnect && location;
 
-      // ✅ Si todos están concedidos, canAskAgain es irrelevante (true)
-      // Si no están concedidos, necesitamos verificar con request para saber si canAskAgain
+      // ✅ CORREGIDO: Si todos están concedidos, limpiar el estado de denegación
+      if (allGranted) {
+        await this.clearDeniedState();
+        return {
+          bluetooth: true,
+          bluetoothScan,
+          bluetoothConnect,
+          location,
+          allGranted,
+          canAskAgain: true, // Irrelevante si ya están concedidos
+        };
+      }
+
+      // ✅ NUEVO: Si no están concedidos, verificar si fue denegado permanentemente
+      const wasDenied = await this.wasDeniedPermanently();
+      
       return {
         bluetooth: true,
         bluetoothScan,
         bluetoothConnect,
         location,
         allGranted,
-        canAskAgain: allGranted ? true : true, // Se determinará en request()
+        canAskAgain: !wasDenied,
       };
     } else {
       // Android 11 y anteriores - solo necesita ubicación
@@ -102,20 +162,34 @@ export const BlePermissionsService = {
         PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
       );
 
+      if (location) {
+        await this.clearDeniedState();
+        return {
+          bluetooth: true,
+          bluetoothScan: true,
+          bluetoothConnect: true,
+          location,
+          allGranted: location,
+          canAskAgain: true,
+        };
+      }
+
+      const wasDenied = await this.wasDeniedPermanently();
+
       return {
         bluetooth: true,
         bluetoothScan: true,
         bluetoothConnect: true,
         location,
         allGranted: location,
-        canAskAgain: location ? true : true,
+        canAskAgain: !wasDenied,
       };
     }
   },
 
   /**
    * Android: Solicitar permisos
-   * ✅ CORREGIDO: Ahora detecta 'never_ask_again' para saber si debe ir a configuración
+   * ✅ CORREGIDO: Ahora persiste el estado 'never_ask_again'
    */
   async requestAndroid(): Promise<BlePermissions> {
     const apiLevel = Platform.Version as number;
@@ -138,7 +212,7 @@ export const BlePermissionsService = {
         const location = locationResult === 'granted';
         const allGranted = bluetoothScan && bluetoothConnect && location;
 
-        // ✅ NUEVO: Detectar si algún permiso fue denegado permanentemente
+        // Detectar si algún permiso fue denegado permanentemente
         const hasNeverAskAgain = 
           bluetoothScanResult === 'never_ask_again' ||
           bluetoothConnectResult === 'never_ask_again' ||
@@ -146,6 +220,14 @@ export const BlePermissionsService = {
 
         // canAskAgain es false si algún permiso tiene 'never_ask_again'
         const canAskAgain = !hasNeverAskAgain;
+
+        // ✅ NUEVO: Persistir el estado de denegación permanente
+        if (hasNeverAskAgain) {
+          await this.setDeniedPermanently(true);
+        } else if (allGranted) {
+          // Si todos están concedidos, limpiar el estado
+          await this.clearDeniedState();
+        }
 
         console.log('[BlePermissions] Request results:', {
           bluetoothScan: bluetoothScanResult,
@@ -170,6 +252,13 @@ export const BlePermissionsService = {
 
         const location = result === 'granted';
         const canAskAgain = result !== 'never_ask_again';
+
+        // ✅ NUEVO: Persistir el estado de denegación permanente
+        if (result === 'never_ask_again') {
+          await this.setDeniedPermanently(true);
+        } else if (location) {
+          await this.clearDeniedState();
+        }
 
         console.log('[BlePermissions] Location result:', result, 'canAskAgain:', canAskAgain);
 

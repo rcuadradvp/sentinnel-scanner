@@ -124,17 +124,11 @@ export function PermissionModal({
 }: PermissionModalProps) {
   const config = PERMISSION_CONFIG[type];
   const IconComponent = config.icon;
-
-  // Reemplazar {biometricType} en strings
   const finalTitle = (title || config.title).replace('{biometricType}', biometricType);
   const finalDescription = (description || config.description).replace('{biometricType}', biometricType);
   const confirmBgColor = config.confirmBgColor || 'bg-primary-500';
-  
-  /**
-   * ✅ NUEVO: Usar el texto de confirmación apropiado según showManualWarning
-   */
   const confirmText = showManualWarning 
-    ? (config.confirmTextManual || 'Abrir configuración')
+    ? (config.confirmTextManual || 'Ir a ajustes')
     : config.confirmText;
 
   const handleCancel = () => {
@@ -146,8 +140,6 @@ export function PermissionModal({
 
   const handleConfirm = () => {
     onConfirm();
-    // ✅ Solo cerrar si NO es un caso de manual warning
-    // El componente padre decidirá cuándo cerrar
     if (!showManualWarning) {
       onClose();
     }
@@ -173,11 +165,6 @@ export function PermissionModal({
             <Text className="text-typography-600 text-center">
               {finalDescription}
             </Text>
-
-            {/**
-             * ✅ Warning de configuración manual
-             * Se muestra cuando showManualWarning es true
-             */}
             {showManualWarning && (
               <HStack className="items-start gap-2 bg-warning-50 p-3 rounded-lg">
                 <Icon as={AlertCircle} size="sm" className="text-warning-600 mt-0.5" />
@@ -203,9 +190,6 @@ export function PermissionModal({
                 className={`flex-1 ${confirmBgColor}`}
                 onPress={handleConfirm}
               >
-                {/**
-                 * ✅ NUEVO: Mostrar ícono de configuración si showManualWarning es true
-                 */}
                 {showManualWarning && (
                   <Icon as={Settings} size="sm" className="text-white mr-2" />
                 )}

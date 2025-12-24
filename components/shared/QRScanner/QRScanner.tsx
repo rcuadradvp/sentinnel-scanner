@@ -1,12 +1,21 @@
 // components/shared/QRScanner/QRScanner.tsx
-import { useState, useEffect } from 'react';
-import { View, StyleSheet, Dimensions, ActivityIndicator, Pressable } from 'react-native';
+import { useState, useEffect, useRef } from 'react';
+import { 
+  View, 
+  StyleSheet, 
+  Dimensions, 
+  ActivityIndicator, 
+  Pressable,
+  Linking,
+  AppState,
+  AppStateStatus,
+} from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Text } from '@/components/ui/text';
 import { VStack } from '@/components/ui/vstack';
 import { HStack } from '@/components/ui/hstack';
 import { Icon } from '@/components/ui/icon';
-import { Camera, AlertCircle } from 'lucide-react-native';
+import { Camera, AlertTriangle, Settings } from 'lucide-react-native';
 import { Button, ButtonText } from '@/components/ui/button';
 
 const { width } = Dimensions.get('window');
@@ -28,12 +37,46 @@ export function QRScanner({
   const [hasScanned, setHasScanned] = useState(false);
   const [showTapIndicator, setShowTapIndicator] = useState(false);
   const [tapPosition, setTapPosition] = useState({ x: 0, y: 0 });
+  
+  /**
+   * ✅ NUEVO: Ref para trackear si estamos esperando que el usuario
+   * vuelva de la configuración
+   */
+  const waitingForSettingsReturn = useRef(false);
+  const appState = useRef(AppState.currentState);
 
   useEffect(() => {
     if (!isScanning) {
       setHasScanned(false);
     }
   }, [isScanning]);
+
+  /**
+   * ✅ NUEVO: Manejar cambios de estado de la app
+   * para detectar cuando el usuario vuelve de configuración
+   */
+  useEffect(() => {
+    const handleAppStateChange = async (nextAppState: AppStateStatus) => {
+      if (
+        appState.current.match(/inactive|background/) &&
+        nextAppState === 'active' &&
+        waitingForSettingsReturn.current
+      ) {
+        console.log('[QRScanner] App returned from background, re-checking permissions...');
+        // El hook useCameraPermissions se actualiza automáticamente
+        // pero podemos forzar una re-verificación
+        waitingForSettingsReturn.current = false;
+      }
+      
+      appState.current = nextAppState;
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   const handleTap = (event: any) => {
     const { locationX, locationY } = event.nativeEvent;
@@ -45,15 +88,26 @@ export function QRScanner({
     }, 800);
   };
 
-  const handleRequestPermission = async () => {
-    const result = await requestPermission();
-    
-    // Si el usuario deniega los permisos y no puede volver a pedir
-    if (!result.granted && !result.canAskAgain) {
-      console.log('[QRScanner] Permission permanently denied');
+  /**
+   * ✅ CORREGIDO: Manejar el botón según el estado de canAskAgain
+   */
+  const handlePermissionAction = async () => {
+    if (permission && !permission.canAskAgain) {
+      // No puede pedir permisos - abrir configuración
+      console.log('[QRScanner] Opening settings (permission permanently denied)');
+      waitingForSettingsReturn.current = true;
+      await Linking.openSettings();
+    } else {
+      // Puede pedir permisos normalmente
+      const result = await requestPermission();
+      
+      if (!result.granted && !result.canAskAgain) {
+        console.log('[QRScanner] Permission permanently denied');
+      }
     }
   };
 
+  // Loading state
   if (!permission) {
     return (
       <View style={[styles.container, { height: CAMERA_HEIGHT }]}>
@@ -65,35 +119,51 @@ export function QRScanner({
     );
   }
 
+  // Permission not granted state
   if (!permission.granted) {
+    const mustOpenSettings = !permission.canAskAgain;
+
     return (
       <View style={[styles.container, { height: CAMERA_HEIGHT, backgroundColor: '#f3f4f6' }]}>
         <VStack className="items-center gap-4 px-6">
-          <VStack className="bg-primary-100 p-4 rounded-full">
-            <Icon as={Camera} size="xl" className="text-primary-600" />
+          {/* Icono - cambia según el estado */}
+          <VStack className={`p-4 rounded-full ${mustOpenSettings ? 'bg-warning-100' : 'bg-primary-100'}`}>
+            <Icon 
+              as={mustOpenSettings ? Settings : Camera} 
+              size="xl" 
+              className={mustOpenSettings ? 'text-warning-600' : 'text-primary-600'} 
+            />
           </VStack>
           
+          {/* Título y descripción - cambian según el estado */}
           <VStack className="items-center gap-2">
             <Text className="text-center text-typography-900 font-semibold text-lg">
-              Acceso a la cámara
+              {mustOpenSettings ? 'Permisos requeridos' : 'Acceso a la cámara'}
             </Text>
             <Text className="text-center text-typography-600 text-sm">
-              Se necesita acceso a la cámara para escanear códigos QR
+              {mustOpenSettings 
+                ? 'Los permisos fueron denegados. Debes habilitarlos manualmente en la configuración del dispositivo.'
+                : 'Se necesita acceso a la cámara para escanear códigos QR'
+              }
             </Text>
           </VStack>
 
+          {/* Botón - cambia según el estado */}
           <Button 
-            onPress={handleRequestPermission} 
-            className="bg-primary-500 mt-2"
+            onPress={handlePermissionAction} 
+            className={`mt-2 ${mustOpenSettings ? 'bg-warning-500' : 'bg-primary-500'}`}
           >
-            <ButtonText>Permitir acceso</ButtonText>
+            <ButtonText>
+              {mustOpenSettings ? 'Abrir configuración' : 'Permitir acceso'}
+            </ButtonText>
           </Button>
 
-          {!permission.canAskAgain && (
+          {/* Warning adicional cuando debe ir a configuración */}
+          {mustOpenSettings && (
             <HStack className="items-start gap-2 bg-warning-50 p-3 rounded-lg mt-2">
-              <Icon as={AlertCircle} size="sm" className="text-warning-600 mt-0.5" />
+              <Icon as={AlertTriangle} size="sm" className="text-warning-600 mt-0.5" />
               <Text className="text-xs text-warning-700 flex-1">
-                Activa los permisos manualmente en la configuración de tu dispositivo
+                Busca "Cámara" en los permisos de la aplicación y actívalo
               </Text>
             </HStack>
           )}
@@ -102,6 +172,7 @@ export function QRScanner({
     );
   }
 
+  // Camera view when permission is granted
   const handleBarCodeScanned = ({ data }: { data: string }) => {
     if (hasScanned || !isScanning) return;
     
