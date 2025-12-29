@@ -58,14 +58,6 @@ function DeviceCard({ device }: DeviceCardProps) {
   return (
     <View className="rounded-xl p-4 mb-3 bg-white border border-outline-100">
       <HStack className="items-center gap-3">
-        {/* Icono */}
-        <View>
-          <Icon 
-            as={SmartphoneNfc} 
-            size="xl"  
-          />
-        </View>
-
         {/* Info */}
         <VStack className="flex-1 gap-1">
           <HStack className="items-center justify-between">

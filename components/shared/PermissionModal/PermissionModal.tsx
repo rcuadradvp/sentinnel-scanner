@@ -6,13 +6,13 @@ import { Heading } from '@/components/ui/heading';
 import { Text } from '@/components/ui/text';
 import { Button, ButtonText } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
-import { 
-  Bluetooth, 
-  MapPin, 
+import {
+  Bluetooth,
+  MapPin,
   Camera,
-  AlertCircle, 
-  Fingerprint, 
-  CheckCircle2, 
+  AlertCircle,
+  Fingerprint,
+  CheckCircle2,
   AlertTriangle,
   Settings,
 } from 'lucide-react-native';
@@ -26,10 +26,6 @@ interface PermissionModalProps {
   title?: string;
   description?: string;
   biometricType?: string;
-  /**
-   * ✅ NUEVO: Cuando es true, muestra el warning de configuración manual
-   * y cambia el botón a "Abrir configuración"
-   */
   showManualWarning?: boolean;
 }
 
@@ -44,9 +40,6 @@ const PERMISSION_CONFIG = {
     cancelText: 'Cancelar',
     showCancel: true,
     confirmBgColor: 'bg-primary-500',
-    /**
-     * ✅ NUEVO: Texto del botón cuando showManualWarning es true
-     */
     confirmTextManual: 'Abrir configuración',
   },
   location: {
@@ -127,7 +120,7 @@ export function PermissionModal({
   const finalTitle = (title || config.title).replace('{biometricType}', biometricType);
   const finalDescription = (description || config.description).replace('{biometricType}', biometricType);
   const confirmBgColor = config.confirmBgColor || 'bg-primary-500';
-  const confirmText = showManualWarning 
+  const confirmText = showManualWarning
     ? (config.confirmTextManual || 'Ir a ajustes')
     : config.confirmText;
 
@@ -146,12 +139,12 @@ export function PermissionModal({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="md">
+    <Modal isOpen={isOpen} onClose={onClose} size="lg">
       <ModalBackdrop />
       <ModalContent>
         <ModalHeader className="border-b border-outline-200 pb-4">
           <VStack className="items-center gap-3 w-full">
-            <VStack className={`${config.iconBgColor} p-4 rounded-full`}>
+            <VStack className={`p-4`}>
               <Icon as={IconComponent} size="xl" className={config.iconColor} />
             </VStack>
             <Heading size="lg" className="text-center">
@@ -177,22 +170,19 @@ export function PermissionModal({
         </ModalBody>
 
         <ModalFooter className="border-t border-outline-200 pt-4">
-          {config.showCancel ? (
+          {config.showCancel && !showManualWarning ? (
             <HStack className="gap-3 w-full">
               <Button
                 variant="outline"
-                className="flex-1"
+                className="flex-[0.8]"
                 onPress={handleCancel}
               >
                 <ButtonText>{config.cancelText}</ButtonText>
               </Button>
               <Button
-                className={`flex-1 ${confirmBgColor}`}
+                className={`flex-[1.2] ${confirmBgColor}`}
                 onPress={handleConfirm}
               >
-                {showManualWarning && (
-                  <Icon as={Settings} size="sm" className="text-white mr-2" />
-                )}
                 <ButtonText>{confirmText}</ButtonText>
               </Button>
             </HStack>

@@ -23,7 +23,7 @@ export function DevicesMenuScreen() {
           <Pressable
             onPress={() => router.push('/(app)/(tabs)/devices/assigned' as any)}
           >
-            <Box className="rounded-xl p-5 border border-primary-50 active:bg-primary-100">
+            <Box className="rounded-xl p-5 border border-gray-100 active:bg-primary-100">
               <HStack className="items-center justify-between">
                 <HStack className="items-center gap-4 flex-1">
                   <VStack className="flex-1">
@@ -48,7 +48,7 @@ export function DevicesMenuScreen() {
           <Pressable
             onPress={() => router.push('/(app)/(tabs)/devices/unassigned' as any)}
           >
-            <Box className="rounded-xl p-5 border border-primary-50 active:bg-primary-100">
+            <Box className="rounded-xl p-5 border border-gray-100 active:bg-primary-100">
               <HStack className="items-center justify-between">
                 <HStack className="items-center gap-4 flex-1">
                   <VStack className="flex-1">

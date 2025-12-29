@@ -16,7 +16,7 @@ import { Heading } from '@/components/ui/heading';
 import { Icon } from '@/components/ui/icon';
 import { Input, InputField } from '@/components/ui/input';
 import { Button, ButtonText } from '@/components/ui/button';
-import { SquareX, AlertCircle, CheckCircle2, CheckCircle, ChevronDown } from 'lucide-react-native';
+import { X, AlertCircle, CheckCircle2, CheckCircle, ChevronDown } from 'lucide-react-native';
 import { QRScanner } from '@/components/shared/QRScanner';
 import { useAddDevice } from '@/hooks/useAddDevice';
 import { DEVICE_PRIORITIES, type DevicePriority, type UnassignedDevice } from '@/types';
@@ -211,14 +211,14 @@ export function AddDeviceModal({
         <ModalBackdrop />
         
         <ModalContent className="max-h-[85%] w-[90%]">
-          <ModalHeader className="border-b border-outline-100">
+          <ModalHeader className="pb-2">
             <Heading size="md">
               {step === 'scanner' && 'Escanear V-tag'}
               {step === 'manual' && 'Ingresar MAC'}
               {step === 'form' && 'Nuevo Dispositivo'}
             </Heading>
             <ModalCloseButton onPress={handleClose}>
-              <Icon as={SquareX} size="sm" />
+              <Icon as={X} size="xl" />
             </ModalCloseButton>
           </ModalHeader>
 

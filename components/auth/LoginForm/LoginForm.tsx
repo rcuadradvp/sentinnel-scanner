@@ -1,6 +1,6 @@
 // components/auth/LoginForm/LoginForm.tsx
 import { useState } from 'react';
-import { Eye, EyeOff } from 'lucide-react-native';
+import { Eye, EyeOff,User, LockKeyhole   } from 'lucide-react-native';
 import { FormControl } from '@/components/ui/form-control';
 import { VStack } from '@/components/ui/vstack';
 import { InputIcon } from '@/components/ui/input';
@@ -45,7 +45,7 @@ export function LoginForm({
     setShowPassword((prev) => !prev);
   };
 
-  return (
+   return (
     <FormControl>
       <VStack className="gap-6">
         <FormInput
@@ -55,6 +55,7 @@ export function LoginForm({
           placeholder="correo@ejemplo.com"
           keyboardType="email-address"
           isDisabled={isLoading}
+          leftIcon={User}
         />
 
         <FormInput
@@ -70,13 +71,14 @@ export function LoginForm({
               className="text-typography-500"
             />
           }
+          leftIcon={LockKeyhole}
           onRightIconPress={togglePasswordVisibility}
         />
 
         <LoadingButton
           onPress={handleSubmit}
           isLoading={isLoading}
-          variant="info"
+          variant="primary"
         >
           Ingresar
         </LoadingButton>

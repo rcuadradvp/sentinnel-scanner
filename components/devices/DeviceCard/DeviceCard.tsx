@@ -10,7 +10,6 @@ interface DeviceCardProps {
 }
 
 function formatMacAddress(mac: string): string {
-  // C300003889BB → C3:00:00:38:89:BB
   const clean = mac.replace(/[:\-\s]/g, '');
   return clean.match(/.{1,2}/g)?.join(':') || mac;
 }
