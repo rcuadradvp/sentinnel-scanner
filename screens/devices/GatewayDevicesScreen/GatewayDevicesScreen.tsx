@@ -14,6 +14,7 @@ import {
   SmartphoneNfc,
 } from 'lucide-react-native';
 import api from '@/services/api';
+import { AddAssociatedDeviceModal } from '@/components/devices/AddAssociatedDeviceModal'; // ✅ AGREGADO
 
 /**
  * Tipo para dispositivo del gateway
@@ -126,6 +127,7 @@ export function GatewayDevicesScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false); // ✅ AGREGADO
 
   const fetchGatewayDetail = useCallback(async (isRefresh = false) => {
     if (!gatewayUuid) {
@@ -164,6 +166,11 @@ export function GatewayDevicesScreen() {
     fetchGatewayDetail(true);
   }, [fetchGatewayDetail]);
 
+  // ✅ AGREGADO
+  const handleAddSuccess = () => {
+    refresh();
+  };
+
   const devices = gateway?.devices_associated || [];
   const isOnline = gateway?.status === 'ONLINE';
 
@@ -187,10 +194,11 @@ export function GatewayDevicesScreen() {
             </HStack>
           </VStack>
 
+          {/* ✅ BOTÓN ACTUALIZADO */}
           <Pressable
-            onPress={() => {
-            }}
+            onPress={() => setIsModalOpen(true)}
             className="bg-primary-500 px-4 py-2 rounded-lg active:opacity-80 flex-row items-center gap-2"
+            disabled={isLoading}
           >
             <Icon as={Plus} size="sm" className="text-white" />
             <Text className="text-white font-medium text-sm">
@@ -223,6 +231,15 @@ export function GatewayDevicesScreen() {
             showsVerticalScrollIndicator={false}
           />
         )}
+
+        {/* ✅ MODAL AGREGADO */}
+        <AddAssociatedDeviceModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          gatewayUuid={gatewayUuid}
+          gatewayName={gatewayName}
+          onSuccess={handleAddSuccess}
+        />
       </View>
     </SafeAreaView>
   );

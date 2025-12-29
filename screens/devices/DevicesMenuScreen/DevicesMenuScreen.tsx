@@ -8,14 +8,14 @@ import { Box } from '@/components/ui/box';
 import { Heading } from '@/components/ui/heading';
 import { Text } from '@/components/ui/text';
 import { Icon } from '@/components/ui/icon';
-import { Package, PackageOpen, ChevronRight } from 'lucide-react-native';
+import { ChevronRight } from 'lucide-react-native';
 
 export function DevicesMenuScreen() {
   return (
     <SafeAreaView style={{ flex: 1 }} edges={['top']}>
       <VStack className="flex-1 px-4 pt-4 bg-background-0">
         <Heading size="2xl" className="mb-6">
-          Dispositivos
+          V-tags
         </Heading>
 
         <VStack className="gap-4">
@@ -23,7 +23,7 @@ export function DevicesMenuScreen() {
           <Pressable
             onPress={() => router.push('/(app)/(tabs)/devices/assigned' as any)}
           >
-            <Box className="rounded-xl p-5 border border-gray-100 active:bg-primary-100">
+            <Box className="rounded-xl p-5 border border-gray-100 bg-white active:bg-primary-50">
               <HStack className="items-center justify-between">
                 <HStack className="items-center gap-4 flex-1">
                   <VStack className="flex-1">
@@ -31,7 +31,7 @@ export function DevicesMenuScreen() {
                       V-tags asignados a un V-gate
                     </Text>
                     <Text className="text-sm text-typography-500 mt-1">
-                      Se generaran alertas al salir del radar del V-gate
+                      Se generarán alertas al salir del radar del V-gate
                     </Text>
                   </VStack>
                 </HStack>
@@ -48,7 +48,7 @@ export function DevicesMenuScreen() {
           <Pressable
             onPress={() => router.push('/(app)/(tabs)/devices/unassigned' as any)}
           >
-            <Box className="rounded-xl p-5 border border-gray-100 active:bg-primary-100">
+            <Box className="rounded-xl p-5 border border-gray-100 bg-white active:bg-primary-50">
               <HStack className="items-center justify-between">
                 <HStack className="items-center gap-4 flex-1">
                   <VStack className="flex-1">
@@ -56,7 +56,7 @@ export function DevicesMenuScreen() {
                       V-tags sin asignar
                     </Text>
                     <Text className="text-sm text-typography-500 mt-1">
-                      Se generaran alertas al entrar en el radar del V-gate
+                      Se generarán alertas al entrar en el radar del V-gate
                     </Text>
                   </VStack>
                 </HStack>

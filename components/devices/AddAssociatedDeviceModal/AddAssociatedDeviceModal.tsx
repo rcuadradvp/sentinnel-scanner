@@ -1,398 +1,531 @@
 // components/devices/AddAssociatedDeviceModal/AddAssociatedDeviceModal.tsx
-import { useState, useCallback, useMemo } from 'react';
-import { View, Pressable, FlatList, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { useState, useCallback } from 'react';
+import { View, Pressable, StyleSheet, Modal as RNModal } from 'react-native';
 import {
   Modal,
   ModalBackdrop,
   ModalContent,
   ModalHeader,
   ModalBody,
-  ModalFooter,
   ModalCloseButton,
 } from '@/components/ui/modal';
 import { VStack } from '@/components/ui/vstack';
 import { HStack } from '@/components/ui/hstack';
-import { Box } from '@/components/ui/box';
 import { Text } from '@/components/ui/text';
 import { Heading } from '@/components/ui/heading';
 import { Icon } from '@/components/ui/icon';
 import { Input, InputField } from '@/components/ui/input';
-import { Button, ButtonText, ButtonSpinner } from '@/components/ui/button';
-import { 
-  SquareX, 
-  Search,
-  Tag,
-  Plus,
-  Check,
-  AlertCircle,
-  ChevronRight,
-} from 'lucide-react-native';
+import { Button, ButtonText } from '@/components/ui/button';
+import { X, AlertCircle, CheckCircle2, ChevronDown } from 'lucide-react-native';
+import { QRScanner } from '@/components/shared/QRScanner';
 import { useAssociateDevice } from '@/hooks/useAssociateDevice';
-import { VALID_DEVICE_MAC_PREFIXES_RAW } from '@/constants/device';
-import type { GatewayDevice } from '@/types';
+import { DEVICE_PRIORITIES, type DevicePriority } from '@/types';
 
 interface AddAssociatedDeviceModalProps {
   isOpen: boolean;
   onClose: () => void;
   gatewayUuid: string;
   gatewayName: string;
-  unassociatedDevices: GatewayDevice[];
   onSuccess?: () => void;
 }
 
-type Step = 'select' | 'create';
+type Step = 'scanner' | 'manual' | 'form';
+type AlertType = 'invalidQR' | 'invalidMAC' | 'success' | null;
 
 export function AddAssociatedDeviceModal({
   isOpen,
   onClose,
   gatewayUuid,
   gatewayName,
-  unassociatedDevices,
   onSuccess,
 }: AddAssociatedDeviceModalProps) {
-  const [step, setStep] = useState<Step>('select');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedDevice, setSelectedDevice] = useState<GatewayDevice | null>(null);
+  const [step, setStep] = useState<Step>('scanner');
+  const [scannedMAC, setScannedMAC] = useState<string | null>(null);
+  const [scannerKey, setScannerKey] = useState(0);
+  const [showMainModal, setShowMainModal] = useState(true);
+  const [pendingAlert, setPendingAlert] = useState<{ 
+    type: AlertType; 
+    message?: string; 
+    deviceName?: string 
+  }>({ type: null });
 
-  // Form state para crear nuevo
-  const [newName, setNewName] = useState('');
-  const [newMac, setNewMac] = useState('');
-  const [macError, setMacError] = useState<string | null>(null);
+  // Form state
+  const [name, setName] = useState('');
+  const [priority, setPriority] = useState<DevicePriority>(3);
+  const [manualMAC, setManualMAC] = useState('');
+  const [showPriorityModal, setShowPriorityModal] = useState(false);
 
   const {
-    isLoading,
     isCreating,
     error,
-    associateDevice,
     createAndAssociateDevice,
     clearError,
   } = useAssociateDevice();
 
-  // Filtrar dispositivos por búsqueda
-  const filteredDevices = useMemo(() => {
-    if (!searchQuery.trim()) return unassociatedDevices;
-    
-    const query = searchQuery.toLowerCase();
-    return unassociatedDevices.filter(device => 
-      device.name.toLowerCase().includes(query) ||
-      device.mac.toLowerCase().includes(query)
-    );
-  }, [unassociatedDevices, searchQuery]);
+  // Extraer MAC del QR
+  const extractMACFromQR = useCallback((qrData: string): string | null => {
+    const patterns = [
+      /mac[:\s]*([0-9A-Fa-f:]{12,17})/i,
+      /([0-9A-Fa-f]{12})/,
+      /([0-9A-Fa-f:]{17})/,
+    ];
+
+    for (const pattern of patterns) {
+      const match = qrData.match(pattern);
+      if (match) {
+        return match[1];
+      }
+    }
+    return null;
+  }, []);
+
+  const resetScanner = useCallback(() => {
+    setScannerKey(prev => prev + 1);
+  }, []);
 
   const resetForm = useCallback(() => {
-    setStep('select');
-    setSearchQuery('');
-    setSelectedDevice(null);
-    setNewName('');
-    setNewMac('');
-    setMacError(null);
+    setStep('scanner');
+    setScannedMAC(null);
+    setName('');
+    setPriority(3);
+    setManualMAC('');
     clearError();
-  }, [clearError]);
+    resetScanner();
+  }, [clearError, resetScanner]);
 
   const handleClose = useCallback(() => {
+    if (pendingAlert.type !== null) {
+      setPendingAlert({ type: null });
+      setShowMainModal(true);
+      return;
+    }
+    
     onClose();
-    setTimeout(resetForm, 300);
-  }, [onClose, resetForm]);
+    setTimeout(() => {
+      resetForm();
+      setShowMainModal(true);
+    }, 300);
+  }, [resetForm, onClose, pendingAlert.type]);
 
-  // Formatear MAC mientras se escribe
-  const formatMacInput = (text: string) => {
-    // Remover todo excepto hex
-    const cleaned = text.replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
-    
-    // Formatear con colons cada 2 caracteres
-    const formatted = cleaned.match(/.{1,2}/g)?.join(':') || cleaned;
-    
-    return formatted.substring(0, 17); // Máximo XX:XX:XX:XX:XX:XX
-  };
+  const showAlert = useCallback((type: AlertType, data?: { 
+    message?: string; 
+    deviceName?: string 
+  }) => {
+    setShowMainModal(false);
+    setPendingAlert({ type, ...data });
+  }, []);
 
-  const handleMacChange = (text: string) => {
-    const formatted = formatMacInput(text);
-    setNewMac(formatted);
-    setMacError(null);
-  };
-
-  const validateMac = (mac: string): boolean => {
+  // Validar MAC
+  const validateMAC = (mac: string): { valid: boolean; formatted?: string; error?: string } => {
     const cleaned = mac.replace(/[:\-\s]/g, '').toUpperCase();
     
     if (cleaned.length !== 12) {
-      setMacError('La MAC debe tener 12 caracteres');
-      return false;
+      return { valid: false, error: 'La MAC debe tener 12 caracteres hexadecimales' };
     }
 
     if (!/^[0-9A-F]{12}$/.test(cleaned)) {
-      setMacError('La MAC contiene caracteres inválidos');
-      return false;
+      return { valid: false, error: 'La MAC contiene caracteres inválidos' };
     }
 
-    // Verificar prefijo válido para V-tags
-    const hasValidPrefix = VALID_DEVICE_MAC_PREFIXES_RAW.some(prefix => 
-      cleaned.startsWith(prefix)
-    );
-
-    if (!hasValidPrefix) {
-      setMacError('MAC no corresponde a un V-tag válido');
-      return false;
-    }
-
-    return true;
+    // Formatear con colons
+    const formatted = cleaned.match(/.{1,2}/g)?.join(':') || cleaned;
+    return { valid: true, formatted };
   };
 
-  // Asociar dispositivo existente
-  const handleAssociate = async () => {
-    if (!selectedDevice?.uuid) return;
+  const handleQRScan = useCallback((data: string) => {
+    const extractedMAC = extractMACFromQR(data);
 
-    const success = await associateDevice(gatewayUuid, selectedDevice.uuid);
-    
-    if (success) {
-      onSuccess?.();
-      handleClose();
+    if (!extractedMAC) {
+      showAlert('invalidQR', {
+        message: 'El código QR escaneado no contiene una dirección MAC válida.',
+      });
+      return;
     }
-  };
 
-  // Crear y asociar nuevo dispositivo
-  const handleCreateAndAssociate = async () => {
-    if (!newName.trim()) return;
-    if (!validateMac(newMac)) return;
+    const validation = validateMAC(extractedMAC);
+    if (!validation.valid) {
+      showAlert('invalidMAC', {
+        message: 'Este dispositivo no es un V-tag válido.',
+      });
+      return;
+    }
+
+    setScannedMAC(validation.formatted!);
+    setStep('form');
+  }, [extractMACFromQR, showAlert]);
+
+  const handleManualSubmit = useCallback(() => {
+    const validation = validateMAC(manualMAC);
+    if (!validation.valid) {
+      showAlert('invalidMAC', {
+        message: 'Este dispositivo no es un V-tag válido.',
+      });
+      return;
+    }
+
+    setScannedMAC(validation.formatted!);
+    setStep('form');
+  }, [manualMAC, showAlert]);
+
+  const handleFormSubmit = useCallback(async () => {
+    if (!scannedMAC || !name.trim()) {
+      return;
+    }
 
     const success = await createAndAssociateDevice(gatewayUuid, {
-      name: newName.trim(),
-      mac: newMac.replace(/[:\-\s]/g, '').toUpperCase(),
-      priority: 4,
+      name: name.trim(),
+      mac: scannedMAC.replace(/[:\-\s]/g, '').toUpperCase(),
+      priority,
     });
 
     if (success) {
+      showAlert('success', { deviceName: name.trim() });
       onSuccess?.();
+    }
+  }, [scannedMAC, name, priority, gatewayUuid, createAndAssociateDevice, showAlert, onSuccess]);
+
+  const handleCancel = useCallback(() => {
+    if (step === 'manual') {
+      setStep('scanner');
+      setManualMAC('');
+    } else if (step === 'form') {
+      setStep('scanner');
+      setScannedMAC(null);
+      setName('');
+      setPriority(3);
+    } else {
       handleClose();
     }
-  };
+  }, [step, handleClose]);
 
-  const renderSelectStep = () => (
-    <>
-      <ModalBody className="px-4 py-0">
-        {/* Buscador */}
-        <HStack className="items-center gap-2 bg-background-50 rounded-lg px-3 py-2 mb-4">
-          <Icon as={Search} size="sm" className="text-typography-400" />
-          <TextInput
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder="Buscar por nombre o MAC..."
-            placeholderTextColor="#9CA3AF"
-            className="flex-1 text-base text-typography-900"
-          />
-        </HStack>
+  const handleInvalidQRClose = useCallback(() => {
+    setPendingAlert({ type: null });
+    setShowMainModal(true);
+    resetScanner();
+  }, [resetScanner]);
 
-        {/* Lista de dispositivos no asociados */}
-        {filteredDevices.length > 0 ? (
-          <FlatList
-            data={filteredDevices}
-            keyExtractor={(item) => item.uuid || item.mac}
-            renderItem={({ item }) => (
-              <Pressable
-                onPress={() => setSelectedDevice(
-                  selectedDevice?.uuid === item.uuid ? null : item
-                )}
-              >
-                <Box className={`rounded-lg p-3 mb-2 border ${
-                  selectedDevice?.uuid === item.uuid 
-                    ? 'border-primary-500 bg-primary-50' 
-                    : 'border-outline-100 bg-white'
-                }`}>
-                  <HStack className="items-center gap-3">
-                    <View className={`rounded-full p-2 ${
-                      selectedDevice?.uuid === item.uuid 
-                        ? 'bg-primary-100' 
-                        : 'bg-gray-100'
-                    }`}>
-                      {selectedDevice?.uuid === item.uuid ? (
-                        <Icon as={Check} size="sm" className="text-primary-600" />
-                      ) : (
-                        <Icon as={Tag} size="sm" className="text-gray-400" />
-                      )}
-                    </View>
-                    <VStack className="flex-1">
-                      <Text className="font-medium text-typography-900">
-                        {item.name}
-                      </Text>
-                      <Text className="text-xs text-typography-500 font-mono">
-                        {item.mac.match(/.{1,2}/g)?.join(':') || item.mac}
-                      </Text>
-                    </VStack>
-                  </HStack>
-                </Box>
-              </Pressable>
-            )}
-            style={{ maxHeight: 300 }}
-            showsVerticalScrollIndicator={false}
-          />
-        ) : (
-          <VStack className="items-center py-8">
-            <Icon as={Tag} size="xl" className="text-gray-300 mb-2" />
-            <Text className="text-typography-500 text-center">
-              {searchQuery 
-                ? 'No se encontraron dispositivos' 
-                : 'No hay dispositivos disponibles para asignar'
-              }
-            </Text>
-          </VStack>
-        )}
+  const handleInvalidMACClose = useCallback(() => {
+    setPendingAlert({ type: null });
+    setShowMainModal(true);
+    setManualMAC('');
+    setStep('manual');
+  }, []);
 
-        {/* Opción para crear nuevo */}
-        <Pressable onPress={() => setStep('create')}>
-          <HStack className="items-center justify-between p-3 bg-background-50 rounded-lg mt-4">
-            <HStack className="items-center gap-2">
-              <Icon as={Plus} size="sm" className="text-primary-600" />
-              <Text className="text-primary-600 font-medium">
-                Crear nuevo V-tag
-              </Text>
-            </HStack>
-            <Icon as={ChevronRight} size="sm" className="text-primary-600" />
-          </HStack>
-        </Pressable>
+  const handleSuccessClose = useCallback(() => {
+    setPendingAlert({ type: null });
+    onClose();
+    setTimeout(() => {
+      resetForm();
+      setShowMainModal(true);
+    }, 300);
+  }, [resetForm, onClose]);
 
-        {/* Error */}
-        {error && (
-          <HStack className="items-center gap-2 bg-error-50 p-3 rounded-lg mt-4">
-            <Icon as={AlertCircle} size="sm" className="text-error-600" />
-            <Text className="text-sm text-error-700 flex-1">{error}</Text>
-          </HStack>
-        )}
-      </ModalBody>
-
-      <ModalFooter className="border-t border-outline-100">
-        <HStack className="gap-3 w-full">
-          <Button
-            variant="outline"
-            onPress={handleClose}
-            className="flex-1"
-          >
-            <ButtonText>Cancelar</ButtonText>
-          </Button>
-          <Button
-            onPress={handleAssociate}
-            disabled={!selectedDevice || isLoading}
-            className={`flex-1 ${selectedDevice ? 'bg-primary-500' : 'bg-gray-300'}`}
-          >
-            {isLoading ? (
-              <ButtonSpinner color="white" />
-            ) : (
-              <ButtonText>Asignar</ButtonText>
-            )}
-          </Button>
-        </HStack>
-      </ModalFooter>
-    </>
-  );
-
-  const renderCreateStep = () => (
-    <>
-      <ModalBody className="px-4">
-        <VStack className="gap-4">
-          {/* Nombre */}
-          <VStack className="gap-2">
-            <Text className="text-sm font-medium text-typography-700">
-              Nombre del V-tag *
-            </Text>
-            <Input variant="outline" size="md">
-              <InputField
-                value={newName}
-                onChangeText={setNewName}
-                placeholder="Ej: Pallet A1"
-              />
-            </Input>
-          </VStack>
-
-          {/* MAC */}
-          <VStack className="gap-2">
-            <Text className="text-sm font-medium text-typography-700">
-              Dirección MAC *
-            </Text>
-            <Input 
-              variant="outline" 
-              size="md"
-              isInvalid={!!macError}
-            >
-              <InputField
-                value={newMac}
-                onChangeText={handleMacChange}
-                placeholder="C3:00:00:XX:XX:XX"
-                autoCapitalize="characters"
-                maxLength={17}
-              />
-            </Input>
-            {macError && (
-              <Text className="text-xs text-error-600">{macError}</Text>
-            )}
-            <Text className="text-xs text-typography-400">
-              Formato: XX:XX:XX:XX:XX:XX (12 caracteres hexadecimales)
-            </Text>
-          </VStack>
-
-          {/* Error */}
-          {error && (
-            <HStack className="items-center gap-2 bg-error-50 p-3 rounded-lg">
-              <Icon as={AlertCircle} size="sm" className="text-error-600" />
-              <Text className="text-sm text-error-700 flex-1">{error}</Text>
-            </HStack>
-          )}
-        </VStack>
-      </ModalBody>
-
-      <ModalFooter className="border-t border-outline-100">
-        <HStack className="gap-3 w-full">
-          <Button
-            variant="outline"
-            onPress={() => {
-              setStep('select');
-              setNewName('');
-              setNewMac('');
-              setMacError(null);
-              clearError();
-            }}
-            className="flex-1"
-          >
-            <ButtonText>Volver</ButtonText>
-          </Button>
-          <Button
-            onPress={handleCreateAndAssociate}
-            disabled={!newName.trim() || !newMac || isCreating}
-            className={`flex-1 ${newName.trim() && newMac ? 'bg-primary-500' : 'bg-gray-300'}`}
-          >
-            {isCreating ? (
-              <ButtonSpinner color="white" />
-            ) : (
-              <ButtonText>Crear y Asignar</ButtonText>
-            )}
-          </Button>
-        </HStack>
-      </ModalFooter>
-    </>
-  );
+  const selectedPriority = DEVICE_PRIORITIES.find(p => p.value === priority);
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} size="lg">
-      <ModalBackdrop />
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        className="flex-1 justify-center"
-      >
-        <ModalContent className="max-h-[85%] w-[90%] mx-auto">
-          <ModalHeader className="border-b border-outline-100">
+    <>
+      {/* ===== MODAL PRINCIPAL ===== */}
+      <Modal isOpen={isOpen && showMainModal} onClose={handleClose} size="lg">
+        <ModalBackdrop />
+        
+        <ModalContent className="max-h-[85%] w-[90%]">
+          <ModalHeader className="pb-2">
             <VStack>
               <Heading size="md">
-                {step === 'select' ? 'Asignar V-tag' : 'Crear nuevo V-tag'}
+                {step === 'scanner' && 'Escanear V-tag'}
+                {step === 'manual' && 'Ingresar MAC'}
+                {step === 'form' && 'Nuevo V-tag'}
               </Heading>
               <Text className="text-sm text-typography-500">
                 {gatewayName}
               </Text>
             </VStack>
             <ModalCloseButton onPress={handleClose}>
-              <Icon as={SquareX} size="md" className="text-typography-500" />
+              <Icon as={X} size="xl" />
             </ModalCloseButton>
           </ModalHeader>
 
-          {step === 'select' ? renderSelectStep() : renderCreateStep()}
+          <ModalBody className="p-0">
+            {/* Scanner Step */}
+            {step === 'scanner' && (
+              <View className="p-4">
+                <QRScanner
+                  key={scannerKey}
+                  onScan={handleQRScan}
+                  isScanning={!isCreating}
+                />
+                
+                <View className="mt-4">
+                  <Pressable
+                    onPress={() => setStep('manual')}
+                    className="active:opacity-50 py-3"
+                  >
+                    <Text className="text-primary-500 text-center font-medium">
+                      O ingresar MAC manualmente
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            )}
+
+            {/* Manual MAC Step */}
+            {step === 'manual' && (
+              <VStack className="gap-4 p-4">
+                <Text className="text-typography-600 text-sm">
+                  Ingresa la dirección MAC del V-tag en formato: AA:BB:CC:DD:EE:FF
+                </Text>
+
+                <Input variant="outline" size="md">
+                  <InputField
+                    placeholder="Ej: A1:B2:C3:D4:E5:F6"
+                    value={manualMAC}
+                    onChangeText={setManualMAC}
+                    autoCapitalize="characters"
+                  />
+                </Input>
+
+                <HStack className="gap-3 mt-2">
+                  <Button
+                    variant="outline"
+                    action="secondary"
+                    className="flex-1"
+                    onPress={handleCancel}
+                    disabled={isCreating}
+                  >
+                    <ButtonText>Volver</ButtonText>
+                  </Button>
+                  <Button
+                    variant="solid"
+                    action="primary"
+                    className="flex-1"
+                    onPress={handleManualSubmit}
+                    disabled={!manualMAC.trim() || isCreating}
+                  >
+                    <ButtonText>Continuar</ButtonText>
+                  </Button>
+                </HStack>
+              </VStack>
+            )}
+
+            {/* Form Step */}
+            {step === 'form' && (
+              <VStack className="gap-4 p-4">
+                {/* MAC (readonly) */}
+                {scannedMAC && (
+                  <VStack className="gap-2">
+                    <Text className="text-typography-700 font-medium">MAC</Text>
+                    <View className="bg-background-100 p-3 rounded-lg">
+                      <Text className="text-typography-600 font-mono">{scannedMAC}</Text>
+                    </View>
+                  </VStack>
+                )}
+
+                {/* Nombre */}
+                <VStack className="gap-2">
+                  <Text className="text-typography-700 font-medium">Nombre *</Text>
+                  <Input variant="outline" size="md">
+                    <InputField
+                      placeholder="Ej: Pallet A-01"
+                      value={name}
+                      onChangeText={setName}
+                    />
+                  </Input>
+                </VStack>
+
+                {/* Prioridad */}
+                <VStack className="gap-2">
+                  <Text className="text-typography-700 font-medium">Prioridad</Text>
+                  <Pressable
+                    onPress={() => setShowPriorityModal(true)}
+                    className="bg-background-100 p-3 rounded-lg flex-row items-center justify-between active:bg-background-200"
+                  >
+                    <Text className="text-typography-900">
+                      {selectedPriority?.label || 'Seleccionar'}
+                    </Text>
+                    <Icon as={ChevronDown} size="sm" className="text-typography-500" />
+                  </Pressable>
+                </VStack>
+
+                {/* Error */}
+                {error && (
+                  <HStack className="items-start gap-2 bg-error-50 p-3 rounded-lg">
+                    <Icon as={AlertCircle} size="sm" className="text-error-600 mt-0.5" />
+                    <Text className="text-error-700 text-sm flex-1">{error}</Text>
+                  </HStack>
+                )}
+
+                {/* Buttons */}
+                <HStack className="gap-3 mt-2">
+                  <Button
+                    variant="outline"
+                    action="secondary"
+                    className="flex-1"
+                    onPress={handleCancel}
+                    disabled={isCreating}
+                  >
+                    <ButtonText>Cancelar</ButtonText>
+                  </Button>
+                  <Button
+                    variant="solid"
+                    action="primary"
+                    className="flex-1"
+                    onPress={handleFormSubmit}
+                    disabled={!name.trim() || isCreating}
+                  >
+                    <ButtonText>
+                      {isCreating ? 'Creando...' : 'Guardar'}
+                    </ButtonText>
+                  </Button>
+                </HStack>
+              </VStack>
+            )}
+          </ModalBody>
         </ModalContent>
-      </KeyboardAvoidingView>
-    </Modal>
+      </Modal>
+
+      {/* ===== MODAL DE PRIORIDAD ===== */}
+      <RNModal
+        visible={showPriorityModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPriorityModal(false)}
+      >
+        <View style={styles.alertContainer}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowPriorityModal(false)}>
+            <View style={styles.backdrop} />
+          </Pressable>
+          
+          <View style={styles.alertContent} className="bg-background-0 rounded-xl p-6 w-[90%] max-w-md">
+            <Heading size="lg" className="text-typography-900 mb-4">
+              Seleccionar Prioridad
+            </Heading>
+            
+            <VStack className="gap-2">
+              {DEVICE_PRIORITIES.map((p) => (
+                <Pressable
+                  key={p.value}
+                  onPress={() => {
+                    setPriority(p.value);
+                    setShowPriorityModal(false);
+                  }}
+                  className="p-3 rounded-lg active:bg-background-100"
+                >
+                  <HStack className="items-center justify-between">
+                    <Text className="text-typography-900">{p.label}</Text>
+                    {priority === p.value && (
+                      <Icon as={CheckCircle2} size="sm" className="text-primary-500" />
+                    )}
+                  </HStack>
+                </Pressable>
+              ))}
+            </VStack>
+          </View>
+        </View>
+      </RNModal>
+
+      {/* ===== ALERTS ===== */}
+
+      {/* Alert: QR Inválido */}
+      <RNModal
+        visible={pendingAlert.type === 'invalidQR'}
+        transparent
+        animationType="fade"
+        onRequestClose={handleInvalidQRClose}
+      >
+        <View style={styles.alertContainer}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={handleInvalidQRClose}>
+            <View style={styles.backdrop} />
+          </Pressable>
+          
+          <View style={styles.alertContent} className="bg-background-0 rounded-xl p-6 w-[90%] max-w-md">
+            <HStack className="items-center gap-3 mb-4">
+              <Icon as={AlertCircle} size="xl" className="text-error-500" />
+              <Heading size="lg" className="text-typography-900">QR inválido</Heading>
+            </HStack>
+            
+            <Text className="text-typography-700 text-base mb-6">
+              {pendingAlert.message}
+            </Text>
+            
+            <Button variant="solid" action="primary" onPress={handleInvalidQRClose}>
+              <ButtonText>Entendido</ButtonText>
+            </Button>
+          </View>
+        </View>
+      </RNModal>
+
+      {/* Alert: MAC Inválida */}
+      <RNModal
+        visible={pendingAlert.type === 'invalidMAC'}
+        transparent
+        animationType="fade"
+        onRequestClose={handleInvalidMACClose}
+      >
+        <View style={styles.alertContainer}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={handleInvalidMACClose}>
+            <View style={styles.backdrop} />
+          </Pressable>
+          
+          <View style={styles.alertContent} className="bg-background-0 rounded-xl p-6 w-[90%] max-w-md">
+            <HStack className="items-center gap-3 mb-4">
+              <Icon as={AlertCircle} size="xl" className="text-error-500" />
+              <Heading size="lg" className="text-typography-900">MAC inválida</Heading>
+            </HStack>
+            
+            <Text className="text-typography-700 text-base mb-6">
+              {pendingAlert.message}
+            </Text>
+            
+            <Button variant="solid" action="primary" onPress={handleInvalidMACClose}>
+              <ButtonText>Reintentar</ButtonText>
+            </Button>
+          </View>
+        </View>
+      </RNModal>
+
+      {/* Alert: Éxito */}
+      <RNModal
+        visible={pendingAlert.type === 'success'}
+        transparent
+        animationType="fade"
+        onRequestClose={handleSuccessClose}
+      >
+        <View style={styles.alertContainer}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={handleSuccessClose}>
+            <View style={styles.backdrop} />
+          </Pressable>
+          
+          <View style={styles.alertContent} className="bg-background-0 rounded-xl p-6 w-[90%] max-w-md">
+            <HStack className="items-center gap-3 mb-4">
+              <Icon as={CheckCircle2} size="xl" className="text-success-500" />
+              <Heading size="lg" className="text-typography-900">V-tag asociado</Heading>
+            </HStack>
+            
+            <Text className="text-typography-700 text-base mb-6">
+              El V-tag <Text className="font-semibold">{pendingAlert.deviceName}</Text> ha sido creado y asociado exitosamente a {gatewayName}.
+            </Text>
+            
+            <Button variant="solid" action="primary" onPress={handleSuccessClose}>
+              <ButtonText>Aceptar</ButtonText>
+            </Button>
+          </View>
+        </View>
+      </RNModal>
+    </>
   );
 }
+
+const styles = StyleSheet.create({
+  alertContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  alertContent: {
+    position: 'absolute',
+  },
+});
