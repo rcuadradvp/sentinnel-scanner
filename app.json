@@ -16,7 +16,7 @@
       [
         "expo-local-authentication",
         {
-          "faceIDPermission": "Permitir el uso de Face ID para iniciar sesión de forma rápida y segura."
+          "faceIDPermission": "Permitir el uso de biométrica para iniciar sesión de forma rápida y segura."
         }
       ],
       [
@@ -60,7 +60,7 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSFaceIDUsageDescription": "Permitir el uso de Face ID para iniciar sesión de forma rápida y segura.",
+        "NSFaceIDUsageDescription": "Permitir el uso de biométrica para iniciar sesión de forma rápida y segura.",
         "NSBluetoothAlwaysUsageDescription": "Permitir acceso a Bluetooth para detectar beacons Minew.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Permitir acceso a ubicación para localizar beacons.",
         "NSLocationWhenInUseUsageDescription": "Permitir acceso a ubicación para localizar beacons.",

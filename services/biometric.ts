@@ -51,13 +51,13 @@ export const BiometricService = {
     
     switch (type) {
       case 'facial':
-        return 'Face ID';
+        return 'Biometría';
       case 'fingerprint':
-        return 'huella digital';
+        return 'Biometría';
       case 'iris':
-        return 'escaneo de iris';
+        return 'Biometría';
       default:
-        return 'biometría';
+        return 'Biometría';
     }
   },
 

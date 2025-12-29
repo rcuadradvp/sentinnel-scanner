@@ -1,5 +1,5 @@
 // components/shared/PermissionModal/PermissionModal.tsx
-import { Modal, ModalBackdrop, ModalContent, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal';
+import { Modal, ModalBackdrop, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton } from '@/components/ui/modal';
 import { VStack } from '@/components/ui/vstack';
 import { HStack } from '@/components/ui/hstack';
 import { Heading } from '@/components/ui/heading';
@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   Settings,
+  X,
 } from 'lucide-react-native';
 
 interface PermissionModalProps {
@@ -80,14 +81,14 @@ const PERMISSION_CONFIG = {
   },
   'biometric-success': {
     icon: CheckCircle2,
-    iconBgColor: 'bg-success-100',
-    iconColor: 'text-success-600',
-    title: '¡Listo!',
-    description: '{biometricType} habilitado. La próxima vez podrás iniciar sesión más rápido.',
+    iconBgColor: 'bg-primary-100',
+    iconColor: 'text-primary-600',
+    title: '{biometricType} habilitado',
+    description: 'La próxima vez podrás iniciar sesión más rápido.',
     confirmText: 'Continuar',
     cancelText: '',
     showCancel: false,
-    confirmBgColor: 'bg-success-500',
+    confirmBgColor: 'bg-primary-500',
     confirmTextManual: 'Continuar',
   },
   'biometric-disable': {
@@ -142,18 +143,20 @@ export function PermissionModal({
     <Modal isOpen={isOpen} onClose={onClose} size="lg">
       <ModalBackdrop />
       <ModalContent>
-        <ModalHeader className="border-b border-outline-200 pb-4">
-          <VStack className="items-center gap-3 w-full">
+        <ModalHeader className="flex-row justify-end items-center">
+                      <Text size="md" className="flex-1 text-end font-medium">
+              {finalTitle}
+            </Text>
+          <ModalCloseButton>
+            <Icon as={X} size="xl" />
+          </ModalCloseButton>
+        </ModalHeader>
+        <ModalBody>
+          <VStack className="items-center pt-6 w-full">
             <VStack className={`p-4`}>
               <Icon as={IconComponent} size="xl" className={config.iconColor} />
             </VStack>
-            <Heading size="lg" className="text-center">
-              {finalTitle}
-            </Heading>
           </VStack>
-        </ModalHeader>
-
-        <ModalBody className="py-6">
           <VStack className="gap-4">
             <Text className="text-typography-600 text-center">
               {finalDescription}
@@ -169,7 +172,7 @@ export function PermissionModal({
           </VStack>
         </ModalBody>
 
-        <ModalFooter className="border-t border-outline-200 pt-4">
+        <ModalFooter className="pt-4">
           {config.showCancel && !showManualWarning ? (
             <HStack className="gap-3 w-full">
               <Button

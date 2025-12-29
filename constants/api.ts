@@ -4,7 +4,7 @@ const Environments = {
   PRODUCTION: 'https://apisentinel.vtraxx.cl',
 } as const;
 
-export const BASE_URL = Environments.STAGING;
+export const BASE_URL = Environments.PRODUCTION;
 
 export const ApiTimeouts = {
   DEFAULT: 30000,
